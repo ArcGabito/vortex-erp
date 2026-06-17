@@ -1,0 +1,22 @@
+# Carpetas de compilación
+bin/
+obj/
+
+# Carpetas de configuración de Visual Studio
+.vs/
+.vscode/
+
+# Configuración de usuario de Visual Studio
+*.csproj.user
+*.slnx.user
+
+# Archivos temporales de sistema y editores
+.DS_Store
+Thumbs.db
+*.userprefs
+*.pidb
+*.log
+
+# Carpetas de publicación
+Publish/
+published/
