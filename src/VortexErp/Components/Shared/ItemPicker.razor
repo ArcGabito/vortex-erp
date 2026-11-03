@@ -1,0 +1,125 @@
+@implements IDisposable
+@inject AppSession Session
+@inject IJSRuntime JS
+@*
+    Buscador de artículos por SKU, nombre o código de barras. Funciona con lectores de código de barras que escriben
+    el código y envían Enter: si hay una coincidencia exacta, la elige sola.
+*@
+<div class="picker">
+    <div class="input-icon" @ref="_anchor">
+        <Icon Name="barcode" Size="18" />
+        <input @ref="_input" class="control" placeholder="@Placeholder" value="@_term" autocomplete="off"
+               @oninput="OnInput" @onkeydown="OnKeyAsync" @onfocus="OnFocusAsync" @onblur="OnBlur" />
+    </div>
+    @if (_open && _results.Count > 0)
+    {
+        <div class="picker-list" style="@_style">
+            @for (var i = 0; i < _results.Count; i++)
+            {
+                var item = _results[i];
+                <button class="@(i == _highlight ? "hl" : "")" @onmousedown="() => SelectAsync(item)" @onmousedown:preventDefault>
+                    <Avatar Text="@item.Name" Size="32" />
+                    <span class="two-line">
+                        <span class="t1">@item.Name</span>
+                        <span class="t2">#@item.Sku@(item.Barcode is null ? "" : $" · {item.Barcode}") · @Fmt.Money(item.Price, item.CurrencyCode)@(item.OnHand is { } q ? $" · {Fmt.Qty(q)} en tienda" : "")</span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Placeholder { get; set; } = "Escanea o busca por SKU, nombre o código de barras";
+    [Parameter] public Guid? SiteId { get; set; }
+    [Parameter] public EventCallback<ItemRow> OnSelected { get; set; }
+
+    private ElementReference _anchor, _input;
+    private string _term = "";
+    private bool _open;
+    private int _highlight;
+    private string _style = "";
+    private List<ItemRow> _results = [];
+    private CancellationTokenSource? _debounce;
+
+    public ValueTask FocusAsync() => JS.InvokeVoidAsync("vortex.focus", _input);
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _term = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+        try
+        {
+            await Task.Delay(140, token);
+            await SearchAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (Session.Workspace is not { } pos)
+            return;
+        _results = string.IsNullOrWhiteSpace(_term) ? [] : (await pos.Master.SearchItemsAsync(_term, 8, SiteId)).ToList();
+        _highlight = 0;
+        await PositionAsync();
+        _open = true;
+    }
+
+    private async Task OnKeyAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _highlight = Math.Min(_highlight + 1, _results.Count - 1);
+                break;
+            case "ArrowUp":
+                _highlight = Math.Max(_highlight - 1, 0);
+                break;
+            case "Escape":
+                _open = false;
+                break;
+            case "Enter":
+                _debounce?.Cancel();
+                await SearchAsync();
+                var term = _term.Trim();
+                var exact = _results.FirstOrDefault(i => i.Barcode == term || string.Equals(i.Sku, term, StringComparison.OrdinalIgnoreCase));
+                var pick = exact ?? (_results.Count == 1 ? _results[0] : _open && _highlight < _results.Count ? _results[_highlight] : null);
+                if (pick is not null)
+                    await SelectAsync(pick);
+                break;
+        }
+    }
+
+    private async Task SelectAsync(ItemRow item)
+    {
+        _term = "";
+        _results = [];
+        _open = false;
+        await OnSelected.InvokeAsync(item);
+        await JS.InvokeVoidAsync("vortex.focus", _input);
+    }
+
+    private async Task OnFocusAsync()
+    {
+        if (_results.Count > 0)
+        {
+            await PositionAsync();
+            _open = true;
+        }
+    }
+
+    private void OnBlur() => _open = false;
+
+    private async Task PositionAsync()
+    {
+        var r = await JS.InvokeAsync<double[]>("vortex.rect", _anchor);
+        _style = FormattableString.Invariant($"position:fixed;top:{r[2] + 6:0}px;left:{r[1]:0}px;width:{r[3] - r[1]:0}px;right:auto");
+    }
+
+    public void Dispose() => _debounce?.Cancel();
+}

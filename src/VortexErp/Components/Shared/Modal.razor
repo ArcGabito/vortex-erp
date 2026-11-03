@@ -1,0 +1,36 @@
+@* Diálogo. No se cierra al tocar el fondo, para no perder lo que se estaba escribiendo. *@
+<div class="modal-backdrop">
+    <div class="modal @Size" role="dialog" aria-modal="true" aria-label="@Title">
+        <div class="modal-head">
+            <div>
+                <h3>@Title</h3>
+                @if (Subtitle is not null)
+                {
+                    <p>@Subtitle</p>
+                }
+            </div>
+            <button class="btn btn-ghost icon-btn sm" @onclick="OnClose" aria-label="Cerrar"><Icon Name="x" Size="18" /></button>
+        </div>
+        <div class="modal-body">
+            @if (Error is not null)
+            {
+                <div class="alert error"><Icon Name="alert" Size="18" /><span>@Error</span></div>
+            }
+            @ChildContent
+        </div>
+        @if (Footer is not null)
+        {
+            <div class="modal-foot">@Footer</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Size { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

@@ -1,0 +1,117 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppSession Session
+@inject NavigationManager Nav
+
+@if (Session.IsSignedIn)
+{
+    <div class="app">
+        <div class="sidebar-backdrop @(_menuOpen ? "open" : "")" @onclick="() => _menuOpen = false"></div>
+        <aside class="sidebar @(_menuOpen ? "open" : "")">
+            <div class="brand"><Logo /></div>
+            <nav class="nav" @onclick="() => _menuOpen = false">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />Panel</NavLink>
+                <div class="nav-section">Ventas</div>
+                <NavLink class="nav-link" href="pedidos">
+                    <Icon Name="clipboard" />Pedidos
+                    @if (_toInvoice > 0)
+                    {
+                        <span class="count" title="Pedidos y cotizaciones por atender">@_toInvoice</span>
+                    }
+                </NavLink>
+                <NavLink class="nav-link" href="comprobantes"><Icon Name="receipt" />Comprobantes</NavLink>
+                <NavLink class="nav-link" href="cobranzas">
+                    <Icon Name="wallet" />Cobranzas
+                    @if (_overdue > 0)
+                    {
+                        <span class="count" title="Comprobantes vencidos">@_overdue</span>
+                    }
+                </NavLink>
+
+                <div class="nav-section">Operaciones</div>
+                <NavLink class="nav-link" href="compras"><Icon Name="truck" />Compras</NavLink>
+                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />Inventario</NavLink>
+
+                <div class="nav-section">Catálogo</div>
+                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />Artículos</NavLink>
+                <NavLink class="nav-link" href="socios"><Icon Name="users" />Clientes y proveedores</NavLink>
+                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />Sedes</NavLink>
+
+                <div class="nav-section">Sistema</div>
+                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
+            </nav>
+
+            <div class="promo">
+                <Logo IconOnly Size="64" />
+                <h4 style="margin-top:8px">Libre y de código abierto</h4>
+                <p>Vortex ERP es AGPL-3.0. Hecho en Perú para LATAM y el mundo.</p>
+                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">Contribuir</button>
+            </div>
+        </aside>
+
+        <div class="main">
+            <TopBar OnMenu="() => _menuOpen = !_menuOpen" />
+            <div class="content">
+                <ErrorBoundary @ref="_boundary">
+                    @Body
+                </ErrorBoundary>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _menuOpen;
+    private int _toInvoice, _overdue;
+    private ErrorBoundary? _boundary;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        Session.DataChanged += OnDataChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Session.IsSignedIn)
+        {
+            Nav.NavigateTo("login", replace: true);
+            return;
+        }
+        await LoadCountsAsync();
+    }
+
+    private async Task LoadCountsAsync()
+    {
+        if (Session.Workspace is not { } erp)
+            return;
+        var summary = await erp.Reports.GetDashboardAsync();
+        _toInvoice = summary.OrdersOpen + summary.QuotesToConvert;
+        _overdue = summary.OverdueInvoices;
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(() =>
+    {
+        if (!Session.IsSignedIn)
+            Nav.NavigateTo("login", replace: true);
+        StateHasChanged();
+    });
+
+    private void OnDataChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadCountsAsync();
+        StateHasChanged();
+    });
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _boundary?.Recover();
+
+    private static Task OpenRepoAsync() => Launcher.Default.OpenAsync("https://github.com/ArcGabito/vortex-erp");
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Session.DataChanged -= OnDataChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

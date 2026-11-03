@@ -1,0 +1,106 @@
+@page "/"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Panel</SectionContent>
+
+@if (_summary is { } s)
+{
+    <div class="stat-strip">
+        <StatTile Icon="wallet" Label="Ingresos del mes" Value="@Fmt.MoneyCompact(s.RevenueMonth, s.CurrencyCode)" Delta="s.RevenueChangePct" Hint="@(s.RevenueChangePct is null ? null : "vs. mes pasado a la fecha")" />
+        <StatTile Icon="receipt" Label="Por cobrar" Value="@Fmt.MoneyCompact(s.Receivable, s.CurrencyCode)" Hint="@(s.Overdue > 0 ? $"{Fmt.MoneyCompact(s.Overdue, s.CurrencyCode)} vencido" : "nada vencido")" />
+        <StatTile Icon="clipboard" Label="Por facturar" Value="@Fmt.Compact(s.OrdersOpen + s.PosSalesToInvoice)" Hint="@($"{s.OrdersOpen} pedidos · {s.PosSalesToInvoice} de caja")" />
+        <StatTile Icon="truck" Label="Compras por recibir" Value="@Fmt.Compact(s.PurchasesOpen)" />
+        <StatTile Icon="boxes" Label="Inventario" Value="@Fmt.MoneyCompact(s.InventoryValue, s.CurrencyCode)" Hint="valorizado" />
+    </div>
+}
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Hola, @FirstName</h2>
+            <p>@Session.Session?.Access.OrganizationName · Así van las cuentas de tu empresa.</p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn btn-outline" href="compras"><Icon Name="truck" Size="18" />Comprar</a>
+            <a class="btn btn-dark" href="pedidos"><Icon Name="plus" Size="18" />Nuevo pedido</a>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h3>Ingresos de los últimos 6 meses</h3>
+                    <div class="sub">Comprobantes de pedidos y ventas de caja (netas de devoluciones)</div>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (_months.All(m => m.Invoiced + m.PosSales == 0))
+                {
+                    <EmptyState Icon="wallet" Title="Aún no hay ingresos" Text="Factura un pedido o vende en el POS para ver la evolución." />
+                }
+                else
+                {
+                    var max = _months.Max(m => m.Invoiced + m.PosSales);
+                    <div class="chart-bars" role="img" aria-label="Ingresos por mes">
+                        @foreach (var m in _months)
+                        {
+                            var total = m.Invoiced + m.PosSales;
+                            <div class="col" title="@($"{Fmt.Money(m.Invoiced, Currency)} facturado · {Fmt.Money(m.PosSales, Currency)} en caja")">
+                                <span class="value">@Fmt.Compact(total)</span>
+                                <div class="stack" style="height:@((int)(total / max * 100))%">
+                                    <span class="pos" style="flex:@((double)m.PosSales)"></span>
+                                    <span class="inv" style="flex:@((double)m.Invoiced)"></span>
+                                </div>
+                                <span class="label">@m.Month.ToString("MMM", Fmt.Culture)</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="legend"><span class="inv"></span>Pedidos facturados <span class="pos"></span>Ventas de caja</div>
+                }
+            </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>Requiere atención</h3>
+                        <div class="sub">Lo que espera una acción del ERP</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_summary is { } a)
+                    {
+                        <a class="list-row" href="pedidos">
+                            <Icon Name="star" Size="18" Class="faint" /><span>Cotizaciones del CRM por convertir</span><strong class="end">@a.QuotesToConvert</strong>
+                        </a>
+                        <a class="list-row" href="pedidos">
+                            <Icon Name="clipboard" Size="18" Class="faint" /><span>Pedidos por facturar</span><strong class="end">@a.OrdersOpen</strong>
+                        </a>
+                        <a class="list-row" href="comprobantes?caja=1">
+                            <Icon Name="receipt" Size="18" Class="faint" /><span>Ventas de caja sin comprobante</span><strong class="end">@a.PosSalesToInvoice</strong>
+                        </a>
+                        <a class="list-row" href="cobranzas">
+                            <Icon Name="alert" Size="18" Class="faint" /><span>Comprobantes vencidos</span><strong class="end @(a.OverdueInvoices > 0 ? "qty-neg" : "")">@a.OverdueInvoices</strong>
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private DashboardSummary? _summary;
+    private IReadOnlyList<MonthRevenue> _months = [];
+
+    private string Currency => _summary?.CurrencyCode ?? "PEN";
+    private string FirstName => Session.UserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+
+    protected override async Task LoadAsync()
+    {
+        _summary = await Erp.Reports.GetDashboardAsync();
+        _months = await Erp.Reports.GetMonthlyRevenueAsync();
+    }
+}

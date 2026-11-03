@@ -1,0 +1,309 @@
+@page "/articulos"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Artículos</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Catálogo de artículos</h2>
+            <p>Es el mismo catálogo del POS y del WMS: lo que crees o cambies aquí se comparte con toda la suite.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="Nombre o SKU" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field">
+            <label>Categoría</label>
+            <select class="select" value="@_category" @onchange="async e => { _category = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
+                <option value="">Todas</option>
+                @foreach (var category in _categories)
+                {
+                    <option value="@category">@category</option>
+                }
+            </select>
+        </div>
+        <div class="actions">
+            <button class="btn btn-dark" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="tag" Title="@(_search != "" || _category != "" ? "Nada coincide con la búsqueda" : "El catálogo está vacío")"
+                        Text="Los artículos llegan desde el hub (POS, WMS) o puedes crearlos aquí." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Artículo</th>
+                            <th>Categoría</th>
+                            <th>Unidad</th>
+                            <th class="num">Precio</th>
+                            <th class="num">Stock (WMS)</th>
+                            <th>Estado</th>
+                            <th class="actions-col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in page.Items)
+                        {
+                            <tr @key="item.Id">
+                                <td>
+                                    <div class="cell-main">
+                                        <Avatar Text="@item.Name" Size="34" />
+                                        <div class="two-line"><span class="t1">@item.Name</span><span class="t2">#@item.Sku</span></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="two-line"><span class="t1">@(item.Category ?? "Sin categoría")</span><span class="t2">@(item.Barcode ?? "Sin código de barras")</span></div>
+                                </td>
+                                <td><span class="muted">@item.Unit</span></td>
+                                <td class="num strong">@Fmt.Money(item.Price, item.CurrencyCode)</td>
+                                <td class="num">
+                                    @if (!item.TrackInventory)
+                                    {
+                                        <span class="faint">@(item.Kind == "Service" ? "Servicio" : "No controla stock")</span>
+                                    }
+                                    else if (item.OnHand is { } onHand)
+                                    {
+                                        <span class="@(onHand <= 0 ? "qty-neg" : "strong")">@Fmt.Qty(onHand)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="faint" title="El WMS aún no informó stock de este artículo">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                        @if (item.IsActive)
+                                        {
+                                            <StatusPill Text="Activo" Tone="good" />
+                                        }
+                                        else
+                                        {
+                                            <StatusPill Text="Inactivo" Tone="neutral" />
+                                        }
+                                        @if (item.Pending)
+                                        {
+                                            <span class="tag" title="Guardado en este equipo; se enviará al hub al sincronizar">POR ENVIAR</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="actions-col">
+                                    <KebabMenu>
+                                        <button @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
+                                    </KebabMenu>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="artículos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@if (_form is { } f)
+{
+    <Modal Title="@(f.Id is null ? "Nuevo artículo" : "Editar artículo")" Subtitle="Se guarda en este equipo y se envía al hub para el resto de la suite."
+           Error="@_error" OnClose="Close">
+        <ChildContent>
+            <div class="segmented">
+                <button class="@(f.Kind == "Product" ? "on" : "")" @onclick="@(() => f.Kind = "Product")">Producto</button>
+                <button class="@(f.Kind == "Service" ? "on" : "")" @onclick="@(() => f.Kind = "Service")">Servicio</button>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>SKU</label>
+                    <input class="control" placeholder="CAFE-250" @bind="f.Sku" style="text-transform:uppercase" />
+                </div>
+                <div class="field">
+                    <label>Código de barras</label>
+                    <input class="control" placeholder="7750000000017" @bind="f.Barcode" />
+                </div>
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="control" placeholder="Café tostado 250 g" @bind="f.Name" />
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Categoría</label>
+                    <input class="control" list="item-categories" placeholder="Bebidas" @bind="f.Category" />
+                    <datalist id="item-categories">
+                        @foreach (var category in _categories)
+                        {
+                            <option value="@category"></option>
+                        }
+                    </datalist>
+                </div>
+                <div class="field">
+                    <label>Unidad</label>
+                    <input class="control" list="item-units" @bind="f.Unit" />
+                    <datalist id="item-units">
+                        @foreach (var unit in Units)
+                        {
+                            <option value="@unit"></option>
+                        }
+                    </datalist>
+                </div>
+            </div>
+            <div class="form-row three">
+                <div class="field">
+                    <label>Precio de venta</label>
+                    <input class="control" type="number" min="0" step="0.01" @bind="f.Price" />
+                </div>
+                <div class="field">
+                    <label>Moneda</label>
+                    <select class="select" @bind="f.Currency">
+                        @foreach (var currency in Currencies.Union([f.Currency]))
+                        {
+                            <option value="@currency">@currency</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Impuesto</label>
+                    <select class="select" @bind="f.TaxCode">
+                        <option value="igv">IGV</option>
+                        <option value="exonerado">Exonerado</option>
+                        <option value="inafecto">Inafecto</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label>Descripción (opcional)</label>
+                <input class="control" @bind="f.Description" />
+            </div>
+            <div style="display:flex;gap:22px;flex-wrap:wrap">
+                @if (f.Kind == "Product")
+                {
+                    <label class="check"><input type="checkbox" @bind="f.TrackInventory" />Controla stock (lo lleva el WMS)</label>
+                }
+                <label class="check"><input type="checkbox" @bind="f.IsActive" />Activo</label>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">@(f.Id is null ? "Crear artículo" : "Guardar cambios")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class ItemForm
+    {
+        public Guid? Id { get; init; }
+        public string Kind { get; set; } = "Product";
+        public string Sku { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Barcode { get; set; }
+        public string? Category { get; set; }
+        public string Unit { get; set; } = "unidad";
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "PEN";
+        public string TaxCode { get; set; } = "igv";
+        public string? Description { get; set; }
+        public bool TrackInventory { get; set; } = true;
+        public bool IsActive { get; set; } = true;
+    }
+
+    private static readonly string[] Units = ["unidad", "caja", "paquete", "docena", "kg", "g", "litro", "ml", "metro", "par", "servicio"];
+    private static readonly string[] Currencies = ["PEN", "USD"];
+
+    private const int PageSize = 12;
+    private PagedResult<ItemRow>? _result;
+    private IReadOnlyList<string> _categories = [];
+    private string _search = "", _category = "";
+    private int _page = 1;
+    private string _currency = "PEN";
+    private CancellationTokenSource? _debounce;
+    private ItemForm? _form;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        _categories = await Erp.Master.GetCategoriesAsync();
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        _result = await Erp.Master.GetItemsAsync(_search, _category == "" ? null : _category, _page, PageSize);
+        if (_result.Items.Count == 0 && _page > 1)
+        {
+            _page = _result.Pages;
+            _result = await Erp.Master.GetItemsAsync(_search, _category == "" ? null : _category, _page, PageSize);
+        }
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private void Open(ItemRow? item)
+    {
+        _error = null;
+        _form = item is null
+            ? new ItemForm { Currency = _currency, Category = _category == "" ? null : _category }
+            : new ItemForm
+            {
+                Id = item.Id, Kind = item.Kind, Sku = item.Sku, Name = item.Name, Barcode = item.Barcode, Category = item.Category,
+                Unit = item.Unit, Price = item.Price, Currency = item.CurrencyCode, TaxCode = item.TaxCode ?? "igv",
+                Description = item.Description, TrackInventory = item.TrackInventory, IsActive = item.IsActive,
+            };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is not { } f)
+            return;
+        var draft = new ItemDraft(f.Sku, f.Name, f.Unit, f.Category, f.Barcode, f.Price, f.Currency, f.Description,
+            f.Kind == "Product" && f.TrackInventory, f.Kind, f.TaxCode, f.IsActive);
+        _busy = true;
+        _error = await TryAsync(async () =>
+        {
+            if (f.Id is { } id)
+                await Erp.Master.UpdateItemAsync(id, draft);
+            else
+                await Erp.Master.CreateItemAsync(draft);
+        }, f.Id is null ? $"Artículo {f.Name.Trim()} creado." : "Cambios guardados.");
+        _busy = false;
+        if (_error is null)
+            Close();
+    }
+
+    private void Close()
+    {
+        _form = null;
+        _error = null;
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

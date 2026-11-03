@@ -1,0 +1,16 @@
+<div class="empty">
+    <div class="em-icon"><Icon Name="@Icon" Size="26" /></div>
+    <h4>@Title</h4>
+    @if (Text is not null)
+    {
+        <p>@Text</p>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "boxes";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

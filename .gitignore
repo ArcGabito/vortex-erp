@@ -20,3 +20,14 @@ Thumbs.db
 # Carpetas de publicación
 Publish/
 published/
+# Resultados de pruebas y cobertura
+TestResults/
+coverage*/
+
+# Paquetes del SDK del hub generados con scripts/pack-sdk.* (se regeneran; no se versionan)
+packages/vortex-sdk/*
+!packages/vortex-sdk/.gitkeep
+
+# Usuario de Rider y otros IDEs
+.idea/
+*.user

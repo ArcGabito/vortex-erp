@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Lógica del ERP sin dependencias de UI: base local SQLite, existencias y documentos (recepciones, pedidos,
+    transferencias, ajustes), sincronización con el hub y contratos de los eventos de la suite.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>VortexErp.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <!-- SDK del hub desde el feed local (ver nuget.config y scripts/pack-sdk.*): siempre la versión más alta. -->
+    <PackageReference Include="VortexApi.Client" Version="0.*-*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VortexErp.Core.Tests" />
+  </ItemGroup>
+
+</Project>

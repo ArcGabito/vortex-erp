@@ -1,0 +1,13 @@
+<Project>
+  <!-- Versión y metadatos comunes de la solución. Al publicar una versión, actualizar aquí y en CHANGELOG.md. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>ArcGabito</Authors>
+    <Product>Vortex ERP</Product>
+    <Copyright>Copyright © 2026 ArcGabito y colaboradores de Vortex ERP</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/ArcGabito/vortex-erp</RepositoryUrl>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

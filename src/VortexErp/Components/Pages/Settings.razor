@@ -1,0 +1,224 @@
+@page "/configuracion"
+@inherits ErpPage
+@using VortexApi.Client.Sync
+
+<SectionContent SectionName="page-title">Configuración</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Configuración</h2>
+            <p>Tu cuenta, la conexión con el hub y este equipo.</p>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>Sincronización</h3>
+                        <div class="sub">Todo se guarda primero en este equipo y se sube al hub cuando hay conexión.</div>
+                    </div>
+                    <button class="btn btn-dark btn-sm" disabled="@Session.Sync.IsSyncing" @onclick="Session.SyncNow"><Icon Name="sync" Size="16" />Sincronizar ahora</button>
+                </div>
+                <div class="card-body">
+                    <div class="list-row">
+                        <span>Estado</span>
+                        <span class="end"><span class="pill @ConnectionTone">@ConnectionText</span></span>
+                    </div>
+                    <div class="list-row">
+                        <span>Última sincronización</span>
+                        <span class="end strong" style="font-weight:600">@(Session.Sync.LastSyncAt is { } at ? Fmt.DateTime(at) : "Aún no")</span>
+                    </div>
+                    <div class="list-row">
+                        <span>Operaciones por subir</span>
+                        <strong class="end">@Session.Sync.Pending</strong>
+                    </div>
+                    @if (Session.Sync.LastResult is { } r)
+                    {
+                        <div class="list-row">
+                            <span>Última vuelta</span>
+                            <span class="end muted">@(Fmt.Count(r.PushedEvents + r.PushedMasterWrites, "envío", "envíos")) · @(Fmt.Count(r.PulledChanges + r.PulledEvents, "recibido", "recibidos"))</span>
+                        </div>
+                    }
+                    @if (Session.Connection == ConnectionState.Offline && Session.OfflineValidUntil is { } until)
+                    {
+                        <div class="alert warn" style="margin-top:12px"><Icon Name="wifi-off" Size="18" /><span>Sin conexión. Puedes seguir trabajando hasta el @Fmt.DateTime(until); lo registrado se subirá al reconectar.</span></div>
+                    }
+                    @if (Session.Sync.LastError is { } error)
+                    {
+                        <div class="alert error" style="margin-top:12px"><Icon Name="alert" Size="18" /><span>@error</span></div>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>Rechazadas por el hub</h3>
+                        <div class="sub">Operaciones que el hub no aceptó (datos inválidos o duplicados). No detienen el resto de la cola.</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_failed.Count == 0)
+                    {
+                        <div class="list-row"><Icon Name="check" Size="18" Class="faint" /><span class="muted">No hay operaciones rechazadas.</span></div>
+                    }
+                    @foreach (var f in _failed)
+                    {
+                        <div class="list-row" @key="f.Entry.Id" style="align-items:flex-start">
+                            <div class="two-line" style="flex:1">
+                                <span class="t1">@Describe(f.Entry)</span>
+                                <span class="t2" style="white-space:normal">@HubErrors.ForFailed(f.ErrorCode, f.Error)</span>
+                                <span class="t2">@Fmt.DateTime(f.FailedAt)</span>
+                            </div>
+                            <button class="btn btn-sm" @onclick="() => DismissAsync(f)">Descartar</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+            <div class="card">
+                <div class="card-head"><h3>Cuenta</h3></div>
+                <div class="card-body">
+                    @if (Session.Session is { } s)
+                    {
+                        <div class="list-row">
+                            <Avatar Text="@s.User.FullName" Size="44" Class="user" />
+                            <div class="two-line">
+                                <span class="t1">@s.User.FullName</span>
+                                <span class="t2">@s.User.Email</span>
+                            </div>
+                        </div>
+                        <dl class="kv" style="margin:12px 0 16px">
+                            <dt>Organización</dt>
+                            <dd>@s.Access.OrganizationName</dd>
+                            <dt>Rol en el ERP</dt>
+                            <dd>@RoleLabel(s.Access.Role ?? s.User.Role)</dd>
+                        </dl>
+                    }
+                    <button class="btn btn-danger btn-sm" @onclick="() => Session.SignOutAsync()"><Icon Name="logout" Size="16" />Cerrar sesión</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head"><h3>Este equipo</h3></div>
+                <div class="card-body">
+                    <div class="field" style="margin-bottom:14px">
+                        <label>Sede por defecto</label>
+                        <select class="select" value="@Session.DefaultSiteId" @onchange="e => Session.SetDefaultSite(Guid.TryParse(e.Value?.ToString(), out var g) ? g : null)">
+                            <option value="">Ninguna</option>
+                            @foreach (var site in _sites)
+                            {
+                                <option value="@site.Id">@site.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <dl class="kv">
+                        <dt>Servidor del hub</dt>
+                        <dd>@Session.HubUrl</dd>
+                        <dt>Prefijo de documentos</dt>
+                        <dd>@Session.DeviceTag<div class="muted" style="font-weight:500">p. ej. PED-@(Session.DeviceTag)-000001 y F@(Session.DeviceTag[..3])-000001</div></dd>
+                        <dt>Id del equipo</dt>
+                        <dd>@Session.DeviceId</dd>
+                        @if (Session.Session is { } s2)
+                        {
+                            <dt>Acceso sin conexión</dt>
+                            <dd>hasta el @Fmt.DateTime(s2.OfflineTokenExpiresAt)</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head"><h3>Acerca de</h3></div>
+                <div class="card-body">
+                    <div class="list-row">
+                        <Logo Size="30" />
+                        <span class="end muted">Versión @Version</span>
+                    </div>
+                    <p class="muted" style="font-size:13px;line-height:1.6;margin:10px 0 14px">
+                        Vortex ERP es software libre: puedes usarlo, estudiarlo, modificarlo y compartirlo bajo la licencia
+                        <strong>GNU AGPL-3.0</strong>. Si lo ofreces como servicio en red, debes publicar tus cambios.
+                        Tipografía Montserrat bajo la SIL Open Font License 1.1.
+                    </p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-sm" @onclick="() => OpenAsync(SourceUrl)"><Icon Name="external" Size="16" />Código fuente</button>
+                        <button class="btn btn-sm" @onclick="() => OpenAsync(IssuesUrl)"><Icon Name="heart" Size="16" />Reportar o sugerir</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const string SourceUrl = "https://github.com/ArcGabito/vortex-erp";
+    private const string IssuesUrl = SourceUrl + "/issues";
+    private static readonly string Version = AppInfo.Current.Version.ToString(3);
+
+    private IReadOnlyList<VortexFailedEntry> _failed = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+
+    protected override void OnInitialized() => Session.Changed += OnSessionChanged;
+
+    protected override async Task LoadAsync()
+    {
+        _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
+        _failed = await Session.GetFailedAsync();
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(async () =>
+    {
+        await ReloadAsync();
+        StateHasChanged();
+    });
+
+    private string ConnectionText => Session.Connection switch
+    {
+        ConnectionState.Online => "En línea",
+        ConnectionState.Offline => "Sin conexión",
+        ConnectionState.OfflineExpired => "Periodo sin conexión agotado",
+        _ => "Conectando",
+    };
+
+    private string ConnectionTone => Session.Connection switch
+    {
+        ConnectionState.Online => "good",
+        ConnectionState.Offline => "warn",
+        ConnectionState.OfflineExpired => "bad",
+        _ => "neutral",
+    };
+
+    // Roles del hub (UserRole) y los que un administrador asigne al acceso del ERP, que se muestran tal cual.
+    private static string RoleLabel(string? role) => role switch
+    {
+        "User" => "Usuario",
+        "OrgAdmin" => "Administrador de la organización",
+        "PlatformAdmin" => "Administrador de la plataforma",
+        null or "" => "—",
+        _ => role,
+    };
+
+    private static string Describe(VortexOutboxEntry e) => e.Kind == VortexOutboxKind.Event
+        ? $"Evento {e.EventType}{(e.SubjectId is null ? "" : $" · {e.SubjectId}")}"
+        : $"{e.Resource switch { "items" => "Artículo", "sites" => "Sede", "parties" => "Cliente o proveedor", var other => other }} "
+          + (e.ExpectedVersion is null ? "nuevo" : "editado");
+
+    private async Task DismissAsync(VortexFailedEntry entry)
+    {
+        await Session.DismissFailedAsync(entry.Entry.Id);
+        Toasts.Info("Operación descartada. Si era un alta, se quitó de este equipo.");
+    }
+
+    private static async Task OpenAsync(string url) => await Launcher.Default.OpenAsync(new Uri(url));
+
+    public override void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        base.Dispose();
+    }
+}
