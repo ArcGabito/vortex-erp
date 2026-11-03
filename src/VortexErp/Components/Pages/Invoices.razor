@@ -1,0 +1,337 @@
+@page "/comprobantes"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Comprobantes</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Comprobantes</h2>
+            <p>Facturas y boletas emitidas desde pedidos y ventas de caja. El CRM y el POS ven los comprobantes de sus clientes.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field" style="width:auto">
+            <label>Ver</label>
+            <div class="segmented">
+                <button class="@(!_posTab ? "on" : "")" @onclick="async () => { _posTab = false; _page = 1; await ReloadAsync(); }">Emitidos</button>
+                <button class="@(_posTab ? "on" : "")" @onclick="async () => { _posTab = true; _page = 1; await ReloadAsync(); }">
+                    Ventas de caja sin comprobante@(_posPending > 0 ? $" ({_posPending})" : "")
+                </button>
+            </div>
+        </div>
+        @if (!_posTab)
+        {
+            <div class="field search">
+                <label>Buscar</label>
+                <div class="input-icon">
+                    <Icon Name="search" Size="16" />
+                    <input class="control" placeholder="Número, cliente o RUC" value="@_search" @oninput="OnSearchInput" />
+                </div>
+            </div>
+            <div class="field">
+                <label>Tipo</label>
+                <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
+                    <option value="">Todos</option>
+                    <option value="@InvoiceKinds.Invoice">Facturas</option>
+                    <option value="@InvoiceKinds.Receipt">Boletas</option>
+                </select>
+            </div>
+            <div class="field" style="width:auto">
+                <label>Estado</label>
+                <div class="segmented">
+                    <button class="@(_unpaid is null ? "on" : "")" @onclick="async () => { _unpaid = null; _page = 1; await ReloadAsync(); }">Todos</button>
+                    <button class="@(_unpaid == true ? "on" : "")" @onclick="async () => { _unpaid = true; _page = 1; await ReloadAsync(); }">Por cobrar</button>
+                    <button class="@(_unpaid == false ? "on" : "")" @onclick="async () => { _unpaid = false; _page = 1; await ReloadAsync(); }">Pagados</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (_posTab && _sales is { } sales)
+    {
+        @if (sales.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="receipt" Title="Nada pendiente" Text="Las ventas del POS que aún no tienen comprobante aparecen aquí." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Venta de caja</th><th>Cliente</th><th>Tienda</th><th class="num">Total</th><th class="actions-col"></th></tr></thead>
+                    <tbody>
+                        @foreach (var s in sales.Items)
+                        {
+                            <tr @key="s.Id">
+                                <td><div class="two-line"><span class="t1">@s.Number</span><span class="t2">@Fmt.DateTime(s.CreatedAt)</span></div></td>
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1" style="font-weight:600">@(s.CustomerName ?? "Clientes varios")</span>
+                                        @if (s.Credit > 0)
+                                        {
+                                            <span class="t2">@Fmt.Money(s.Credit, s.CurrencyCode) al crédito</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td><span class="muted">@s.SiteName</span></td>
+                                <td class="num strong">@Fmt.Money(s.Total, s.CurrencyCode)</td>
+                                <td class="actions-col" style="width:auto;white-space:nowrap">
+                                    <button class="btn btn-sm" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Receipt)">Boleta</button>
+                                    @if (s.CustomerId is not null)
+                                    {
+                                        <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Invoice)">Factura</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="sales.Page" PageSize="sales.PageSize" Total="sales.Total" Noun="ventas" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+    else if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="receipt" Title="No hay comprobantes" Text="Emítelos desde un pedido o desde una venta de caja." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Comprobante</th><th>Cliente</th><th>Vence</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th><th class="actions-col">Acciones</th></tr></thead>
+                    <tbody>
+                        @foreach (var i in page.Items)
+                        {
+                            var (text, tone) = StatusPill.ForInvoice(i, Fmt.Today);
+                            <tr @key="i.Id" style="cursor:pointer" @onclick="() => OpenAsync(i)">
+                                <td><div class="two-line"><span class="t1">@i.Number</span><span class="t2">@Fmt.InvoiceKind(i.Kind) · @Fmt.Date(i.IssuedAt)</span></div></td>
+                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(i.CustomerName ?? "Clientes varios")</span><span class="t2">@i.CustomerDocument</span></div></td>
+                                <td><span class="muted">@(i.DueDate is { } due ? Fmt.Date(due) : "—")</span></td>
+                                <td class="num">@Fmt.Money(i.Total, i.CurrencyCode)</td>
+                                <td class="num strong">@Fmt.Money(i.Balance, i.CurrencyCode)</td>
+                                <td><StatusPill Text="@text" Tone="@tone" /></td>
+                                <td class="actions-col" @onclick:stopPropagation>
+                                    <KebabMenu>
+                                        <button @onclick="() => OpenAsync(i)"><Icon Name="receipt" Size="18" />Ver detalle</button>
+                                        @if (!i.IsPaid)
+                                        {
+                                            <button @onclick="() => StartPayment(i)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
+                                        }
+                                    </KebabMenu>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="comprobantes" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@if (_detail is { } d)
+{
+    var (text, tone) = StatusPill.ForInvoice(d, Fmt.Today);
+    <Modal Title="@($"{Fmt.InvoiceKind(d.Kind)} {d.Number}")" Subtitle="@($"{d.CustomerName ?? "Clientes varios"} · {Fmt.DateTime(d.IssuedAt)}")" Size="lg" OnClose="() => _detail = null">
+        <ChildContent>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <StatusPill Text="@text" Tone="@tone" />
+                <span class="muted">@(d.SaleId is not null ? "Venta de caja" : d.OrderId is not null ? "Pedido" : "")@(d.DueDate is { } due ? $" · vence el {Fmt.Date(due)}" : "")</span>
+            </div>
+            <div class="table-wrap">
+                <table class="data" style="min-width:480px">
+                    <thead><tr><th>Descripción</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in _lines)
+                        {
+                            <tr>
+                                <td>@l.Description</td>
+                                <td class="num">@Fmt.Qty(l.Quantity)</td>
+                                <td class="num">@Fmt.Money(l.UnitPrice, d.CurrencyCode)</td>
+                                <td class="num strong">@Fmt.Money(l.Total, d.CurrencyCode)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="grid-2" style="grid-template-columns:1fr 1fr">
+                <div>
+                    <h4 style="font-size:14px;margin-bottom:8px">Cobros</h4>
+                    @if (_payments.Count == 0)
+                    {
+                        <span class="muted">@(d.Paid > 0 ? "Pagado en caja." : "Aún sin cobros.")</span>
+                    }
+                    @foreach (var p in _payments)
+                    {
+                        <div class="list-row">
+                            <div class="two-line"><span class="t1">@p.Number</span><span class="t2">@Fmt.PaymentMethod(p.Method) · @Fmt.Date(p.ReceivedAt)@(p.Reference is null ? "" : $" · {p.Reference}")</span></div>
+                            <strong class="end">@Fmt.Money(p.Amount, p.CurrencyCode)</strong>
+                        </div>
+                    }
+                </div>
+                <dl class="totals">
+                    <dt>Op. gravada y exonerada</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
+                    <dt>IGV</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
+                    <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
+                    <dt>Cobrado</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
+                    <dt>Saldo</dt><dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
+                </dl>
+            </div>
+        </ChildContent>
+        <Footer>
+            @if (!d.IsPaid)
+            {
+                <button class="btn btn-dark" @onclick="() => StartPayment(d)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
+            }
+            else
+            {
+                <button class="btn btn-dark" @onclick="() => _detail = null">Cerrar</button>
+            }
+        </Footer>
+    </Modal>
+}
+
+@if (_paying is { } pay)
+{
+    <Modal Title="Registrar cobro" Subtitle="@($"{pay.Number} · saldo {Fmt.Money(pay.Balance, pay.CurrencyCode)}")" Size="sm" Error="@_error" OnClose="() => _paying = null">
+        <ChildContent>
+            <div class="field">
+                <label>Monto (@Fmt.Symbol(pay.CurrencyCode))</label>
+                <input class="control" type="number" min="0" step="0.01" @bind="_amount" />
+            </div>
+            <div class="field">
+                <label>Medio de pago</label>
+                <select class="select" @bind="_method">
+                    @foreach (var m in PaymentMethods.All)
+                    {
+                        <option value="@m">@Fmt.PaymentMethod(m)</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>Referencia (opcional)</label>
+                <input class="control" placeholder="N.° de operación" @bind="_reference" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _paying = null">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="PayAsync">Registrar cobro</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
+    [SupplyParameterFromQuery(Name = "caja")] public int? PosQuery { get; set; }
+
+    private PagedResult<InvoiceRow>? _result;
+    private PagedResult<PosSaleRow>? _sales;
+    private int _posPending;
+    private bool _posTab;
+    private string _search = "", _kind = "";
+    private bool? _unpaid;
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+
+    private InvoiceRow? _detail, _paying;
+    private IReadOnlyList<InvoiceLineRow> _lines = [];
+    private IReadOnlyList<PaymentRow> _payments = [];
+    private decimal _amount;
+    private string _method = PaymentMethods.Transfer;
+    private string? _reference, _error;
+    private bool _busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (PosQuery == 1 && !_posTab)
+        {
+            _posTab = true;
+            await ReloadAsync();
+        }
+        if (Query is not null && Query != _search)
+        {
+            _search = Query;
+            _posTab = false;
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _posPending = (await Erp.Invoices.GetPosSalesAsync(uninvoicedOnly: true, 1, 1)).Total;
+        if (_posTab)
+            _sales = await Erp.Invoices.GetPosSalesAsync(uninvoicedOnly: true, _page, 15);
+        else
+            _result = await Erp.Invoices.GetInvoicesAsync(new InvoiceQuery(_search, _kind == "" ? null : _kind, _unpaid, Page: _page));
+        if (_detail is { } open)
+            _detail = await Erp.Invoices.GetAsync(open.Id);
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task OpenAsync(InvoiceRow invoice)
+    {
+        _lines = await Erp.Invoices.GetLinesAsync(invoice.Id);
+        _payments = (await Erp.Invoices.GetPaymentsAsync(invoice.Id, 1, 50)).Items;
+        _detail = invoice;
+    }
+
+    private void StartPayment(InvoiceRow invoice)
+    {
+        _error = null;
+        _amount = invoice.Balance;
+        _method = PaymentMethods.Transfer;
+        _reference = null;
+        _detail = null;
+        _paying = invoice;
+    }
+
+    private async Task PayAsync()
+    {
+        if (_paying is not { } invoice)
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Erp.Invoices.RegisterPaymentAsync(invoice.Id, _amount, _method, _reference));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success($"Cobro {number} registrado.");
+            _paying = null;
+        }
+    }
+
+    private async Task IssueSaleAsync(PosSaleRow sale, string kind)
+    {
+        _busy = true;
+        string? number = null;
+        await RunAsync(async () => number = await Erp.Invoices.IssueFromSaleAsync(sale.Id, kind));
+        _busy = false;
+        if (number is not null)
+            Toasts.Success($"{Fmt.InvoiceKind(kind)} {number} emitida para {sale.Number}.");
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

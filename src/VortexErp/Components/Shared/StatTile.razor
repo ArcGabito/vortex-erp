@@ -1,0 +1,40 @@
+@* Indicador: etiqueta y, en la línea del valor, la variación opcional (color = dirección × si subir es bueno) y una
+   nota. Dos líneas, del mismo alto que el ícono; la nota solo se muestra si entra completa (siempre queda en el title). *@
+<div class="stat" title="@Hint">
+    <div class="stat-icon"><Icon Name="@Icon" Size="20" /></div>
+    <div>
+        <div class="stat-label">@Label</div>
+        <div class="stat-value">
+            <span class="stat-figure">
+                <strong>@Value</strong>
+                @if (Delta is { } d)
+                {
+                    <span class="delta @Tone(d)" aria-label="@(d >= 0 ? "Sube" : "Baja") @Math.Abs(d).ToString("0.#", Fmt.Culture)%">
+                        @if (d != 0)
+                        {
+                            <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true">
+                                <path d="@(d > 0 ? "M5 1 9.5 9h-9z" : "M5 9 .5 1h9z")" fill="currentColor" />
+                            </svg>
+                        }
+                        @Math.Abs(d).ToString("0.#", Fmt.Culture)%
+                    </span>
+                }
+            </span>
+            @if (Hint is not null)
+            {
+                <span class="stat-hint">@Hint</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public decimal? Delta { get; set; }
+    [Parameter] public bool UpIsGood { get; set; } = true;
+    [Parameter] public string? Hint { get; set; }
+
+    private string Tone(decimal d) => d == 0 ? "flat" : (d > 0) == UpIsGood ? "good" : "bad";
+}

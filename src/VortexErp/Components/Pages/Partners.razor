@@ -1,0 +1,268 @@
+@page "/socios"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Clientes y proveedores</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Clientes y proveedores</h2>
+            <p>Un solo directorio para la suite: el CRM, el POS y el WMS ven los mismos registros que el ERP.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="Nombre o RUC/DNI" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field" style="width:auto">
+            <label>Mostrar</label>
+            <div class="segmented">
+                @foreach (var (value, label) in Tabs)
+                {
+                    <button class="@(_tab == value ? "on" : "")" @onclick="() => SetTabAsync(value)">@label</button>
+                }
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nuevo registro</button>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="users" Title="No hay registros" Text="Los clientes y proveedores llegan desde el hub (CRM, POS, WMS) o puedes crearlos aquí." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Documento</th>
+                            <th>Contacto</th>
+                            <th>Ciudad</th>
+                            <th>Rol</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in page.Items)
+                        {
+                            <tr @key="p.Id">
+                                <td>
+                                    <div class="cell-main">
+                                        <Avatar Text="@p.Name" Size="34" />
+                                        <div class="two-line">
+                                            <span class="t1">@p.Name</span>
+                                            <span class="t2">@(p.TradeName ?? (p.Kind == "Person" ? "Persona" : "Empresa"))</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (p.DocumentNumber is not null)
+                                    {
+                                        <div class="two-line"><span class="t1">@p.DocumentNumber</span><span class="t2">@p.DocumentType</span></div>
+                                    }
+                                    else
+                                    {
+                                        <span class="faint">Sin documento</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1" style="font-weight:600">@(p.Email ?? "—")</span>
+                                        <span class="t2">@p.Phone</span>
+                                    </div>
+                                </td>
+                                <td><span class="muted">@(p.City ?? "—")</span></td>
+                                <td>
+                                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                        @if (p.IsCustomer)
+                                        {
+                                            <StatusPill Text="Cliente" Tone="info" Plain />
+                                        }
+                                        @if (p.IsSupplier)
+                                        {
+                                            <StatusPill Text="Proveedor" Tone="accent" Plain />
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                        <StatusPill Text="@(p.IsActive ? "Activo" : "Inactivo")" Tone="@(p.IsActive ? "good" : "neutral")" />
+                                        @if (p.Pending)
+                                        {
+                                            <span class="tag" title="Guardado en este equipo; se enviará al hub al sincronizar">POR ENVIAR</span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@if (_form is { } f)
+{
+    <Modal Title="Nuevo cliente o proveedor" Subtitle="Se registra en el hub y lo verán el CRM, el POS y el WMS." Error="@_error" OnClose="Close">
+        <ChildContent>
+            <div class="segmented">
+                <button class="@(f.Kind == "Company" ? "on" : "")" @onclick="@(() => SetKind(f, "Company"))">Empresa</button>
+                <button class="@(f.Kind == "Person" ? "on" : "")" @onclick="@(() => SetKind(f, "Person"))">Persona</button>
+            </div>
+            <div class="field">
+                <label>@(f.Kind == "Company" ? "Razón social" : "Nombre completo")</label>
+                <input class="control" @bind="f.Name" />
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Documento</label>
+                    <select class="select" @bind="f.DocumentType">
+                        <option value="">Sin documento</option>
+                        <option value="RUC">RUC</option>
+                        <option value="DNI">DNI</option>
+                        <option value="CE">Carné de extranjería</option>
+                        <option value="PAS">Pasaporte</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Número</label>
+                    <input class="control" disabled="@(f.DocumentType == "")" inputmode="numeric"
+                           placeholder="@(f.DocumentType switch { "RUC" => "11 dígitos", "DNI" => "8 dígitos", _ => "" })" @bind="f.DocumentNumber" />
+                </div>
+            </div>
+            <div class="form-row three">
+                <div class="field">
+                    <label>Correo</label>
+                    <input class="control" type="email" @bind="f.Email" />
+                </div>
+                <div class="field">
+                    <label>Teléfono</label>
+                    <input class="control" type="tel" @bind="f.Phone" />
+                </div>
+                <div class="field">
+                    <label>Ciudad</label>
+                    <input class="control" @bind="f.City" />
+                </div>
+            </div>
+            <div style="display:flex;gap:22px;flex-wrap:wrap">
+                <label class="check"><input type="checkbox" @bind="f.IsCustomer" />Es cliente</label>
+                <label class="check"><input type="checkbox" @bind="f.IsSupplier" />Es proveedor</label>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">Guardar</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class PartyForm
+    {
+        public string Kind { get; set; } = "Company";
+        public string Name { get; set; } = "";
+        public string DocumentType { get; set; } = "RUC";
+        public string? DocumentNumber { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? City { get; set; }
+        public bool IsCustomer { get; set; } = true;
+        public bool IsSupplier { get; set; }
+    }
+
+    private static readonly (string Value, string Label)[] Tabs = [("", "Todos"), ("customers", "Clientes"), ("suppliers", "Proveedores")];
+
+    private const int PageSize = 12;
+    private PagedResult<PartyRow>? _result;
+    private string _search = "", _tab = "";
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+    private PartyForm? _form;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        bool? customers = _tab == "customers" ? true : null, suppliers = _tab == "suppliers" ? true : null;
+        _result = await Erp.Master.GetPartiesAsync(_search, customers, suppliers, _page, PageSize);
+        if (_result.Items.Count == 0 && _page > 1)
+        {
+            _page = _result.Pages;
+            _result = await Erp.Master.GetPartiesAsync(_search, customers, suppliers, _page, PageSize);
+        }
+    }
+
+    private async Task SetTabAsync(string tab)
+    {
+        _tab = tab;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private static void SetKind(PartyForm f, string kind)
+    {
+        f.Kind = kind;
+        f.DocumentType = kind == "Company" ? "RUC" : "DNI";
+    }
+
+    private void Open()
+    {
+        _error = null;
+        _form = new PartyForm { IsSupplier = _tab == "suppliers", IsCustomer = _tab != "suppliers" };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is not { } f)
+            return;
+        var docType = f.DocumentType == "" ? null : f.DocumentType;
+        var draft = new PartyDraft(f.Name, f.Kind, f.IsCustomer, f.IsSupplier, docType, docType is null ? null : f.DocumentNumber?.Trim(),
+            f.Email, f.Phone, f.City);
+        _busy = true;
+        _error = await TryAsync(() => Erp.Master.CreatePartyAsync(draft), $"{f.Name.Trim()} registrado.");
+        _busy = false;
+        if (_error is null)
+            Close();
+    }
+
+    private void Close()
+    {
+        _form = null;
+        _error = null;
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

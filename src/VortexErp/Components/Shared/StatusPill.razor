@@ -1,0 +1,28 @@
+@* Estado con punto + texto (el color nunca va solo). Tonos: good, info, warn, bad, neutral, accent. *@
+<span class="pill @Tone @(Plain ? "plain" : "")">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public bool Plain { get; set; }
+
+    public static (string Text, string Tone) ForOrder(OrderRow o) =>
+        o.Status == OrderStatuses.Cancelled ? ("Cancelado", "neutral")
+        : o.InvoiceId is not null ? ("Facturado", "good")
+        : o.Status == OrderStatuses.Dispatched ? ("Despachado", "info")
+        : ("Abierto", "warn");
+
+    public static (string Text, string Tone) ForInvoice(InvoiceRow i, DateOnly today) =>
+        i.IsPaid ? ("Pagado", "good")
+        : i.IsOverdue(today) ? ("Vencido", "bad")
+        : i.Paid > 0 ? ("Pago parcial", "warn")
+        : ("Por cobrar", "info");
+
+    public static (string Text, string Tone) ForPurchase(string status) => status switch
+    {
+        PurchaseStatuses.Open => ("Por recibir", "info"),
+        PurchaseStatuses.Partial => ("Recibida en parte", "warn"),
+        PurchaseStatuses.Received => ("Recibida", "good"),
+        _ => ("Cancelada", "neutral"),
+    };
+}

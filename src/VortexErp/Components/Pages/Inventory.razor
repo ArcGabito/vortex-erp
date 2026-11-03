@@ -1,0 +1,111 @@
+@page "/inventario"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Inventario</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Inventario valorizado</h2>
+            <p>El stock lo lleva el WMS; aquí se valoriza al último costo de compra (o al precio de lista si no hubo compras).</p>
+        </div>
+    </div>
+
+    <div class="stat-strip boxed">
+        <StatTile Icon="wallet" Label="Valor del inventario" Value="@Fmt.MoneyCompact(_value, _currency)" Hint="@(_site is null ? "todas las sedes" : "sede elegida")" />
+        <StatTile Icon="boxes" Label="Registros de stock" Value="@Fmt.Compact(_result?.Total ?? 0)" Hint="artículo × sede" />
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="Nombre, SKU o categoría" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field">
+            <label>Sede</label>
+            <select class="select" value="@_site" @onchange="async e => { _site = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; _page = 1; await ReloadAsync(); }">
+                <option value="">Todas</option>
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="boxes" Title="Sin stock informado" Text="Cuando el WMS registre recepciones o ajustes, el stock aparecerá aquí." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Artículo</th><th>Sede</th><th class="num">Stock</th><th class="num">Costo unitario</th><th class="num">Valor</th><th class="num">Actualizado</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in page.Items)
+                        {
+                            <tr @key="(s.SiteId, s.ItemId)">
+                                <td><div class="two-line"><span class="t1">@s.ItemName</span><span class="t2">#@s.Sku@(s.Category is null ? "" : $" · {s.Category}")</span></div></td>
+                                <td><span class="muted">@s.SiteName</span></td>
+                                <td class="num"><span class="@(s.OnHand < 0 ? "qty-neg" : "strong")">@Fmt.Qty(s.OnHand) @s.Unit</span></td>
+                                <td class="num" title="@(s.CostFromPurchase ? "Último costo de compra" : "Precio de lista (sin compras registradas)")">
+                                    @Fmt.Money(s.UnitCost, _currency)@(s.CostFromPurchase ? "" : " *")
+                                </td>
+                                <td class="num strong">@Fmt.Money(s.Value, _currency)</td>
+                                <td class="num muted">@Fmt.Ago(s.UpdatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted" style="font-size:12px">* Valorizado al precio de lista porque aún no hay compras del artículo.</p>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@code {
+    private PagedResult<StockRow>? _result;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private decimal _value;
+    private string _search = "", _currency = "PEN";
+    private Guid? _site;
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+
+    protected override async Task LoadAsync()
+    {
+        _sites = await Erp.Master.GetSitesAsync();
+        _result = await Erp.Reports.GetStockAsync(_search, _site, _page, 15);
+        _value = await Erp.Reports.GetInventoryValueAsync(_site);
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

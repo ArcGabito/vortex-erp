@@ -1,0 +1,64 @@
+@* Pie de tabla: "Mostrando 1 a 10 de 320 artículos" y páginas circulares (la actual en tinta). *@
+<div class="table-foot">
+    <span class="muted">
+        @if (Total == 0)
+        {
+            @($"Sin {Noun}")
+        }
+        else
+        {
+            @($"Mostrando {From} a {To} de {Fmt.Qty(Total)} {Noun}")
+        }
+    </span>
+    @if (Pages > 1)
+    {
+        <div class="pager">
+            <button class="arrow" disabled="@(Page <= 1)" @onclick="() => Go(Page - 1)" aria-label="Anterior"><Icon Name="chevron-left" Size="18" /></button>
+            @foreach (var p in Window())
+            {
+                if (p == 0)
+                {
+                    <span class="gap">…</span>
+                }
+                else
+                {
+                    var number = p;
+                    <button class="@(number == Page ? "on" : "")" @onclick="() => Go(number)">@number</button>
+                }
+            }
+            <button class="arrow" disabled="@(Page >= Pages)" @onclick="() => Go(Page + 1)" aria-label="Siguiente"><Icon Name="chevron-right" Size="18" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int PageSize { get; set; }
+    [Parameter] public int Total { get; set; }
+    [Parameter] public string Noun { get; set; } = "registros";
+    [Parameter] public EventCallback<int> OnPage { get; set; }
+
+    private int Pages => Math.Max(1, (Total + PageSize - 1) / PageSize);
+    private int From => Total == 0 ? 0 : (Page - 1) * PageSize + 1;
+    private int To => Math.Min(Total, Page * PageSize);
+
+    private Task Go(int page) => page < 1 || page > Pages || page == Page ? Task.CompletedTask : OnPage.InvokeAsync(page);
+
+    /// <summary>1 2 3 … 12: primera, última y vecinas de la actual; 0 marca un salto.</summary>
+    private IEnumerable<int> Window()
+    {
+        var shown = new SortedSet<int> { 1, Pages, Page, Math.Max(1, Page - 1), Math.Min(Pages, Page + 1) };
+        if (Page <= 3)
+            shown.UnionWith([2, 3]);
+        if (Page >= Pages - 2)
+            shown.UnionWith([Pages - 2, Pages - 1]);
+        var previous = 0;
+        foreach (var p in shown.Where(p => p >= 1 && p <= Pages))
+        {
+            if (previous != 0 && p - previous > 1)
+                yield return 0;
+            yield return p;
+            previous = p;
+        }
+    }
+}

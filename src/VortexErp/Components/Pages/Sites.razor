@@ -1,0 +1,180 @@
+@page "/sedes"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Sedes</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Sedes</h2>
+            <p>Las sedes son comunes a toda la suite: el ERP despacha y compra para sus almacenes, el POS vende en las tiendas y el WMS lleva el stock.</p>
+        </div>
+        <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nueva sede</button>
+    </div>
+
+    @if (_sites.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="warehouse" Title="Aún no hay sedes" Text="Crea tu primer almacén para empezar a recibir mercadería." />
+    }
+    else
+    {
+        <div class="grid-cards">
+            @foreach (var site in _sites)
+            {
+                var isDefault = Session.DefaultSiteId == site.Id;
+                <div class="card site-card" @key="site.Id">
+                    <div class="top">
+                        <div class="stat-icon"><Icon Name="@(site.Kind == "Store" ? "tag" : site.Kind == "Office" ? "home" : "warehouse")" Size="20" /></div>
+                        <div class="two-line" style="flex:1">
+                            <span class="t1">@site.Name</span>
+                            <span class="t2">@site.Code · @Fmt.SiteKind(site.Kind)</span>
+                        </div>
+                        @if (!site.IsActive)
+                        {
+                            <StatusPill Text="Inactiva" Tone="neutral" />
+                        }
+                        else if (isDefault)
+                        {
+                            <StatusPill Text="Por defecto" Tone="accent" />
+                        }
+                    </div>
+                    <div class="figures">
+                        <div><strong>@Fmt.Compact(site.OpenOrders)</strong><span>pedidos abiertos</span></div>
+                        <div><strong>@Fmt.Compact(site.OpenPurchases)</strong><span>compras por recibir</span></div>
+                    </div>
+                    <div class="muted" style="font-size:12.5px;display:flex;gap:6px;align-items:center;min-height:18px">
+                        @if (Address(site) is { } address)
+                        {
+                            <Icon Name="pin" Size="15" />
+                            <span>@address</span>
+                        }
+                        @if (site.Pending)
+                        {
+                            <span class="tag" title="Guardada en este equipo; se enviará al hub al sincronizar">POR ENVIAR</span>
+                        }
+                    </div>
+                    <hr class="divider" />
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <a class="btn btn-sm" href="inventario"><Icon Name="boxes" Size="16" />Ver stock</a>
+                        @if (site.IsActive && !isDefault)
+                        {
+                            <button class="btn btn-sm btn-ghost" @onclick="() => Session.SetDefaultSite(site.Id)"><Icon Name="star" Size="16" />Usar por defecto</button>
+                        }
+                        else if (isDefault)
+                        {
+                            <button class="btn btn-sm btn-ghost" @onclick="() => Session.SetDefaultSite(null)">Quitar por defecto</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_form is { } f)
+{
+    <Modal Title="Nueva sede" Subtitle="Se crea en el hub para toda la suite (ERP, WMS, POS)." Error="@_error" OnClose="Close">
+        <ChildContent>
+            <div class="segmented">
+                @foreach (var (value, label) in Kinds)
+                {
+                    <button class="@(f.Kind == value ? "on" : "")" @onclick="() => f.Kind = value">@label</button>
+                }
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Código</label>
+                    <input class="control" placeholder="ALM-02" style="text-transform:uppercase" @bind="f.Code" />
+                </div>
+                <div class="field">
+                    <label>Teléfono</label>
+                    <input class="control" placeholder="01 234 5678" @bind="f.Phone" />
+                </div>
+            </div>
+            <div class="field">
+                <label>Nombre</label>
+                <input class="control" placeholder="Almacén Ate" @bind="f.Name" />
+            </div>
+            <div class="field">
+                <label>Dirección</label>
+                <input class="control" placeholder="Av. Separadora Industrial 123" @bind="f.Address" />
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>Ciudad</label>
+                    <input class="control" placeholder="Lima" @bind="f.City" />
+                </div>
+                <div class="field">
+                    <label>País</label>
+                    <select class="select" @bind="f.Country">
+                        @foreach (var (country, name) in Countries)
+                        {
+                            <option value="@country">@name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">Crear sede</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class SiteForm
+    {
+        public string Kind { get; set; } = "Warehouse";
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Phone { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string Country { get; set; } = "PE";
+    }
+
+    private static readonly (string, string)[] Kinds = [("Warehouse", "Almacén"), ("Store", "Tienda"), ("Office", "Oficina"), ("Other", "Otro")];
+
+    internal static readonly (string Code, string Name)[] Countries =
+    [
+        ("PE", "Perú"), ("AR", "Argentina"), ("BO", "Bolivia"), ("BR", "Brasil"), ("CL", "Chile"), ("CO", "Colombia"),
+        ("CR", "Costa Rica"), ("EC", "Ecuador"), ("SV", "El Salvador"), ("ES", "España"), ("US", "Estados Unidos"),
+        ("GT", "Guatemala"), ("HN", "Honduras"), ("MX", "México"), ("NI", "Nicaragua"), ("PA", "Panamá"), ("PY", "Paraguay"),
+        ("DO", "República Dominicana"), ("UY", "Uruguay"), ("VE", "Venezuela"),
+    ];
+
+    private IReadOnlyList<SiteRow> _sites = [];
+    private SiteForm? _form;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync() => _sites = await Erp.Master.GetSitesAsync();
+
+    private static string? Address(SiteRow site) =>
+        string.Join(", ", new[] { site.AddressLine, site.City }.Where(s => !string.IsNullOrWhiteSpace(s))) is { Length: > 0 } text ? text : null;
+
+    private void Open()
+    {
+        _error = null;
+        _form = new SiteForm { Country = (_sites.FirstOrDefault()?.CountryCode) ?? "PE" };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is not { } f)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Master.CreateSiteAsync(new SiteDraft(f.Code, f.Name, f.Kind, f.Phone, f.Address, f.City, f.Country)),
+            $"Sede {f.Name.Trim()} creada.");
+        _busy = false;
+        if (_error is null)
+            Close();
+    }
+
+    private void Close()
+    {
+        _form = null;
+        _error = null;
+    }
+}

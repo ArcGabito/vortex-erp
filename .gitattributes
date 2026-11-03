@@ -1,0 +1,3 @@
+# Finales de línea normalizados en el repo; los scripts de bash siempre con LF (también en Windows).
+* text=auto
+*.sh text eol=lf

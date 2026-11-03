@@ -1,0 +1,230 @@
+@page "/compras"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Compras</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Órdenes de compra</h2>
+            <p>Al crearlas, el WMS prepara la recepción; cuando recibe la mercadería, la orden se cierra sola.</p>
+        </div>
+        <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nueva orden</button>
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="Número o proveedor" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field" style="width:auto">
+            <label>Mostrar</label>
+            <div class="segmented">
+                @foreach (var (value, label) in Tabs)
+                {
+                    <button class="@(_status == value ? "on" : "")" @onclick="async () => { _status = value; _page = 1; await ReloadAsync(); }">@label</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="truck" Title="No hay órdenes de compra" Text="Crea una orden para reponer stock con tus proveedores." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Orden</th><th>Proveedor</th><th>Recibe</th><th class="num">Recibido</th><th class="num">Total</th><th>Estado</th><th class="actions-col"></th></tr></thead>
+                    <tbody>
+                        @foreach (var o in page.Items)
+                        {
+                            var (text, tone) = StatusPill.ForPurchase(o.Status);
+                            <tr @key="o.Id" style="cursor:pointer" @onclick="() => OpenAsync(o)">
+                                <td><div class="two-line"><span class="t1">@o.Number</span><span class="t2">@Fmt.Date(o.CreatedAt)@(o.ExpectedAt is { } exp ? $" · llega el {Fmt.Date(exp)}" : "")</span></div></td>
+                                <td><span style="font-weight:600">@o.SupplierName</span></td>
+                                <td><span class="muted">@o.SiteName</span></td>
+                                <td class="num">@Fmt.Qty(o.Received) / @Fmt.Qty(o.Ordered)</td>
+                                <td class="num strong">@Fmt.Money(o.Total, o.CurrencyCode)</td>
+                                <td><StatusPill Text="@text" Tone="@tone" /></td>
+                                <td class="actions-col" @onclick:stopPropagation>
+                                    @if (o.Status == PurchaseStatuses.Open)
+                                    {
+                                        <KebabMenu>
+                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />Cancelar</button>
+                                        </KebabMenu>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="órdenes" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@if (_new is { } n)
+{
+    <Modal Title="Nueva orden de compra" Subtitle="El WMS la verá como recepción por recibir." Size="lg" Error="@_error" OnClose="() => _new = null">
+        <ChildContent>
+            <div class="form-row three">
+                <div class="field">
+                    <label>Proveedor</label>
+                    <select class="select" @bind="n.SupplierId">
+                        <option value="">Elige un proveedor</option>
+                        @foreach (var s in _suppliers)
+                        {
+                            <option value="@s.Id">@s.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Almacén que recibe</label>
+                    <select class="select" @bind="n.SiteId">
+                        <option value="">Sede por defecto</option>
+                        @foreach (var s in _sites)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Llega el (opcional)</label>
+                    <input class="control" type="date" @bind="n.ExpectedAt" />
+                </div>
+            </div>
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="Costo unitario" Changed="StateHasChanged" />
+            <dl class="totals">
+                <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
+            </dl>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _new = null">Cancelar</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.SupplierId is null)" @onclick="CreateAsync">Crear orden</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_detail is { } d)
+{
+    var (text, tone) = StatusPill.ForPurchase(d.Status);
+    <Modal Title="@($"Orden {d.Number}")" Subtitle="@($"{d.SupplierName} · {d.SiteName}")" Size="lg" OnClose="() => _detail = null">
+        <ChildContent>
+            <div><StatusPill Text="@text" Tone="@tone" /></div>
+            <div class="table-wrap">
+                <table class="data" style="min-width:480px">
+                    <thead><tr><th>Artículo</th><th class="num">Pedido</th><th class="num">Recibido</th><th class="num">Costo</th><th class="num">Importe</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in _lines)
+                        {
+                            <tr>
+                                <td><div class="two-line"><span class="t1">@l.ItemName</span><span class="t2">#@l.Sku</span></div></td>
+                                <td class="num">@Fmt.Qty(l.Quantity)</td>
+                                <td class="num"><span class="@(l.ReceivedQty >= l.Quantity ? "qty-pos" : "warn-text")">@Fmt.Qty(l.ReceivedQty)</span></td>
+                                <td class="num">@Fmt.Money(l.UnitCost, d.CurrencyCode)</td>
+                                <td class="num strong">@Fmt.Money(l.Total, d.CurrencyCode)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <dl class="totals"><dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-dark" @onclick="() => _detail = null">Cerrar</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class NewPurchase
+    {
+        public Guid? SupplierId { get; set; }
+        public Guid? SiteId { get; set; }
+        public DateOnly? ExpectedAt { get; set; }
+        public List<LineEditor.LineDraft> Lines { get; } = [];
+    }
+
+    private static readonly (string Value, string Label)[] Tabs =
+        [("pending", "Por recibir"), (PurchaseStatuses.Received, "Recibidas"), (PurchaseStatuses.Cancelled, "Canceladas"), ("", "Todas")];
+
+    private PagedResult<PurchaseRow>? _result;
+    private IReadOnlyList<Option> _suppliers = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private string _search = "", _status = "pending", _currency = "PEN";
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+    private NewPurchase? _new;
+    private PurchaseRow? _detail;
+    private IReadOnlyList<PurchaseLineRow> _lines = [];
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        _result = await Erp.Purchases.GetPurchasesAsync(_search, _status == "" ? null : _status, _page, 15);
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task OpenNew()
+    {
+        _error = null;
+        _suppliers = await Erp.Master.GetPartyOptionsAsync(suppliers: true);
+        _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
+        _new = new NewPurchase { SiteId = Session.DefaultSiteId };
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_new is not { SupplierId: { } supplier } n)
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Erp.Purchases.CreateAsync(supplier, n.SiteId,
+            n.Lines.Select(l => l.ToDocumentLine()).ToList(), _currency, n.ExpectedAt));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success($"Orden {number} creada.");
+            _new = null;
+        }
+    }
+
+    private async Task OpenAsync(PurchaseRow order)
+    {
+        _lines = await Erp.Purchases.GetLinesAsync(order.Id);
+        _detail = order;
+    }
+
+    private Task CancelAsync(PurchaseRow order) => RunAsync(() => Erp.Purchases.CancelAsync(order.Id), $"Orden {order.Number} cancelada.");
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

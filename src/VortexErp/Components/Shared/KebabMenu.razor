@@ -1,0 +1,38 @@
+@inject IJSRuntime JS
+@* Menú de acciones (⋮). Se posiciona fijo en pantalla para que una tabla con desplazamiento no lo recorte. *@
+<div class="menu-anchor">
+    <button @ref="_button" class="btn btn-ghost icon-btn sm" @onclick="ToggleAsync" title="Acciones" aria-label="Acciones">
+        <Icon Name="more" Size="18" />
+    </button>
+    @if (_open)
+    {
+        <div class="menu-backdrop" @onclick="Close"></div>
+        <div class="menu" style="@_style" @onclick="Close">@ChildContent</div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private ElementReference _button;
+    private bool _open;
+    private string _style = "";
+
+    private async Task ToggleAsync()
+    {
+        if (_open)
+        {
+            Close();
+            return;
+        }
+        var r = await JS.InvokeAsync<double[]>("vortex.rect", _button);
+        double top = r[0], bottom = r[2], right = r[3], viewportW = r[4], viewportH = r[5];
+        var opensUp = bottom + 260 > viewportH && top > 260;
+        _style = opensUp
+            ? FormattableString.Invariant($"position:fixed;right:{viewportW - right:0}px;top:auto;bottom:{viewportH - top + 6:0}px")
+            : FormattableString.Invariant($"position:fixed;right:{viewportW - right:0}px;top:{bottom + 6:0}px");
+        _open = true;
+    }
+
+    private void Close() => _open = false;
+}

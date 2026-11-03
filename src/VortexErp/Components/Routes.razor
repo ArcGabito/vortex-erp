@@ -1,0 +1,31 @@
+@implements IDisposable
+@inject AppSession Session
+
+@if (!Session.Initialized)
+{
+    <div class="boot">
+        <Logo Size="44" />
+        <div class="spinner"></div>
+    </div>
+}
+else
+{
+    <Router AppAssembly="typeof(MauiProgram).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        </Found>
+    </Router>
+}
+<ToastHost />
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnChanged;
+        await Session.InitializeAsync();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Session.Changed -= OnChanged;
+}

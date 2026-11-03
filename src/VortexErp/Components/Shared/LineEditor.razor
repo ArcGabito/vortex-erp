@@ -1,0 +1,101 @@
+@* Líneas de un documento (recepción, transferencia, pedido): se agregan escaneando o buscando el artículo. *@
+<div class="lines">
+    <ItemPicker OnSelected="AddAsync" />
+    @if (Lines.Count > 0)
+    {
+        <div class="line @(ShowPrice ? "with-price" : "")" style="background:transparent;padding-top:0;padding-bottom:0">
+            <span class="field-label">Artículo</span>
+            @if (ShowPrice)
+            {
+                <span class="field-label">@PriceLabel</span>
+            }
+            <span class="field-label">Cantidad</span>
+            <span></span>
+        </div>
+    }
+    @foreach (var line in Lines)
+    {
+        <div class="line @(ShowPrice ? "with-price" : "")" @key="line.Item.Id">
+            <div class="cell-main">
+                <Avatar Text="@line.Item.Name" Size="34" />
+                <div class="two-line">
+                    <span class="t1">@line.Item.Name</span>
+                    <span class="t2">
+                        #@line.Item.Sku · @line.Item.Unit
+                        @if (line.Available is { } available)
+                        {
+                            <span class="@(available < line.Quantity ? "warn-text" : "")"> · disponible @Fmt.Qty(available)</span>
+                        }
+                    </span>
+                </div>
+            </div>
+            @if (ShowPrice)
+            {
+                <input class="control" type="number" min="0" step="0.01" @bind="line.Price" @bind:event="oninput" @bind:after="NotifyAsync" aria-label="@PriceLabel" />
+            }
+            <input class="control" type="number" min="0" step="any" @bind="line.Quantity" @bind:event="oninput" @bind:after="NotifyAsync" aria-label="Cantidad" />
+            <button class="btn btn-ghost icon-btn sm" @onclick="() => RemoveAsync(line)" aria-label="Quitar"><Icon Name="x" Size="16" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    public sealed class LineDraft
+    {
+        public required ItemRow Item { get; init; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal? Price { get; set; }
+        public decimal? Available { get; set; }
+
+        public DocumentLine ToDocumentLine() => new(Item.Id, Quantity, Price);
+    }
+
+    [Parameter, EditorRequired] public List<LineDraft> Lines { get; set; } = [];
+    [Parameter] public bool ShowPrice { get; set; }
+    [Parameter] public string PriceLabel { get; set; } = "Precio";
+
+    /// <summary>Precio inicial de una línea nueva (p. ej. el precio del artículo).</summary>
+    [Parameter] public Func<ItemRow, decimal?>? DefaultPrice { get; set; }
+
+    /// <summary>Disponible del artículo en la sede de origen, para avisar si no alcanza.</summary>
+    [Parameter] public Func<ItemRow, Task<decimal?>>? AvailableFor { get; set; }
+
+    /// <summary>Se avisa al agregar, quitar o editar una línea, para que el formulario recalcule totales y botones.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private async Task AddAsync(ItemRow item)
+    {
+        if (Lines.FirstOrDefault(l => l.Item.Id == item.Id) is { } existing)
+        {
+            existing.Quantity += 1;
+        }
+        else
+        {
+            Lines.Add(new LineDraft
+            {
+                Item = item,
+                Price = DefaultPrice?.Invoke(item),
+                Available = AvailableFor is null ? null : await AvailableFor(item),
+            });
+        }
+        await NotifyAsync();
+    }
+
+    private Task RemoveAsync(LineDraft line)
+    {
+        Lines.Remove(line);
+        return NotifyAsync();
+    }
+
+    private Task NotifyAsync() => Changed.InvokeAsync();
+
+    /// <summary>Recalcula el disponible de todas las líneas (al cambiar la sede de origen).</summary>
+    public async Task RefreshAvailabilityAsync()
+    {
+        if (AvailableFor is null)
+            return;
+        foreach (var line in Lines)
+            line.Available = await AvailableFor(line.Item);
+        StateHasChanged();
+    }
+}

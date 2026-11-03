@@ -1,0 +1,7 @@
+<div class="avatar @Class" style="width:@(Size)px;height:@(Size)px;font-size:@(Size / 3)px" aria-hidden="true">@Fmt.Initials(Text)</div>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public int Size { get; set; } = 36;
+    [Parameter] public string? Class { get; set; }
+}

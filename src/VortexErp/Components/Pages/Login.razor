@@ -1,0 +1,115 @@
+@page "/login"
+@layout EmptyLayout
+@inject AppSession Session
+@inject NavigationManager Nav
+
+<div class="login">
+    <aside class="login-cover">
+        <img src="img/login-portada.jpg" alt="" />
+    </aside>
+
+    <main class="login-main">
+        <form class="login-form" @onsubmit="SubmitAsync" aria-label="Iniciar sesión">
+            <Logo Size="36" />
+
+            @if ((_error ?? Session.SignedOutReason) is { } message)
+            {
+                <div class="alert error"><Icon Name="alert" Size="18" /><span>@message</span></div>
+            }
+
+            <div class="field">
+                <label for="email">Correo</label>
+                <input id="email" class="control" type="email" autocomplete="username" @bind="_email" />
+            </div>
+            <div class="field">
+                <label for="password">Contraseña</label>
+                <div class="password">
+                    <input id="password" class="control" type="@(_showPassword ? "text" : "password")" autocomplete="current-password" @bind="_password" />
+                    <button type="button" @onclick="() => _showPassword = !_showPassword" aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="18" />
+                    </button>
+                </div>
+            </div>
+
+            <button class="btn btn-dark btn-block" type="submit" disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner sm" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>
+                }
+                Ingresar
+            </button>
+
+            @* La dirección del hub es de cada empresa: se puede cambiar aquí antes de ingresar. *@
+            <div class="server">
+                <span>Servidor <b>@Host</b> <button type="button" class="link-btn" @onclick="() => _showServer = !_showServer">@(_showServer ? "Listo" : "Cambiar")</button></span>
+                @if (IsDebug)
+                {
+                    <button type="button" class="link-btn" @onclick="FillDemo">Usar cuenta demo</button>
+                }
+            </div>
+            @if (_showServer)
+            {
+                <div class="field">
+                    <label for="hub">Dirección del hub</label>
+                    <input id="hub" class="control" placeholder="https://hub.miempresa.pe" @bind="_hubUrl" />
+                </div>
+                <div class="field">
+                    <label for="key">Clave de sistema del ERP</label>
+                    <input id="key" class="control" type="password" @bind="_productKey" />
+                </div>
+            }
+        </form>
+    </main>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private string _hubUrl = "";
+    private string _productKey = "";
+    private string? _error;
+    private bool _busy;
+    private bool _showServer;
+    private bool _showPassword;
+
+#if DEBUG
+    private static readonly bool IsDebug = true;
+#else
+    private static readonly bool IsDebug = false;
+#endif
+
+    private string Host => Uri.TryCreate(_hubUrl, UriKind.Absolute, out var uri) ? uri.Authority : _hubUrl;
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsSignedIn)
+        {
+            Nav.NavigateTo("", replace: true);
+            return;
+        }
+        _hubUrl = Session.HubUrl;
+        _productKey = Session.ProductKey;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrEmpty(_password))
+        {
+            _error = "Ingresa tu correo y contraseña.";
+            return;
+        }
+        _busy = true;
+        _error = null;
+        _error = await Session.LoginAsync(_email, _password, _hubUrl, _productKey);
+        _busy = false;
+        if (_error is null)
+            Nav.NavigateTo("", replace: true);
+    }
+
+    private void FillDemo()
+    {
+        // Organización demo que crea el hub en desarrollo (vortex-api/docs/SISTEMAS.md).
+        _email = "luis@vortex.local";
+        _password = "Suite-Local-2026!";
+    }
+}
