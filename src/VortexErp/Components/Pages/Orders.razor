@@ -9,7 +9,10 @@
             <h2>Pedidos de venta</h2>
             <p>Los que creas aquí, los del CRM y los del WMS. El WMS los despacha y aquí se facturan.</p>
         </div>
-        <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
+        @if (Session.Can(ErpPermissions.CreateOrder))
+        {
+            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
+        }
     </div>
 
     @if (_quotes.Count > 0)
@@ -31,7 +34,7 @@
                             <span class="t2">Aceptada @Fmt.Ago(q.AcceptedAt) · @Fmt.Count(q.LineCount, "línea", "líneas")</span>
                         </div>
                         <strong>@Fmt.Money(q.Total, q.CurrencyCode)</strong>
-                        <button class="btn btn-sm btn-dark" disabled="@(_busy || q.CustomerId is null)" @onclick="() => ConvertAsync(q)">Crear pedido</button>
+                        <button class="btn btn-sm btn-dark" disabled="@(_busy || q.CustomerId is null || !Session.Can(ErpPermissions.ConvertQuote))" @onclick="() => ConvertAsync(q)">Crear pedido</button>
                     </div>
                 }
             </div>
@@ -89,11 +92,11 @@
                                 <td class="actions-col" @onclick:stopPropagation>
                                     <KebabMenu>
                                         <button @onclick="() => OpenAsync(o)"><Icon Name="clipboard" Size="18" />Ver detalle</button>
-                                        @if (o.CanInvoice)
+                                        @if (o.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
                                         {
                                             <button @onclick="() => StartInvoice(o)"><Icon Name="receipt" Size="18" />Emitir comprobante</button>
                                         }
-                                        @if (o.CanCancel)
+                                        @if (o.CanCancel && Session.Can(ErpPermissions.CancelOrder))
                                         {
                                             <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />Cancelar</button>
                                         }
@@ -135,7 +138,7 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="Precio (con IGV)" DefaultPrice="i => i.Price" Changed="StateHasChanged" />
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="Precio" DefaultPrice="i => i.Price" Changed="StateHasChanged" />
             <dl class="totals">
                 <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
             </dl>
@@ -179,11 +182,11 @@
             <dl class="totals"><dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
         </ChildContent>
         <Footer>
-            @if (d.CanCancel)
+            @if (d.CanCancel && Session.Can(ErpPermissions.CancelOrder))
             {
                 <button class="btn btn-danger" @onclick="() => CancelAsync(d)"><Icon Name="ban" Size="18" />Cancelar pedido</button>
             }
-            @if (d.CanInvoice)
+            @if (d.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
             {
                 <button class="btn btn-dark" @onclick="() => StartInvoice(d)"><Icon Name="receipt" Size="18" />Emitir comprobante</button>
             }

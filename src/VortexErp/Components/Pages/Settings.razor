@@ -97,7 +97,7 @@
                             <dt>Organización</dt>
                             <dd>@s.Access.OrganizationName</dd>
                             <dt>Rol en el ERP</dt>
-                            <dd>@RoleLabel(s.Access.Role ?? s.User.Role)</dd>
+                            <dd>@RoleLabel(Session.Role)<div class="muted" style="font-weight:500">Lo asigna el administrador de la organización en el hub.</div></dd>
                         </dl>
                     }
                     <button class="btn btn-danger btn-sm" @onclick="() => Session.SignOutAsync()"><Icon Name="logout" Size="16" />Cerrar sesión</button>
@@ -199,6 +199,11 @@
         "User" => "Usuario",
         "OrgAdmin" => "Administrador de la organización",
         "PlatformAdmin" => "Administrador de la plataforma",
+        "administrador" => "Administrador",
+        "contador" => "Contador",
+        "facturador" => "Facturación y cobranzas",
+        "compras" => "Compras",
+        "consulta" => "Solo consulta",
         null or "" => "—",
         _ => role,
     };

@@ -19,6 +19,7 @@ public sealed class ErpWorkspace
         Invoices = new InvoiceService(db, context, clock);
         Purchases = new PurchaseService(db, context, clock);
         Reports = new ReportService(db, context, clock);
+        Audit = new AuditService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
         SyncHandlers = new ErpSyncHandlers(db, Master, clock);
     }
@@ -29,6 +30,7 @@ public sealed class ErpWorkspace
     public InvoiceService Invoices { get; }
     public PurchaseService Purchases { get; }
     public ReportService Reports { get; }
+    public AuditService Audit { get; }
     public SqliteSyncStore SyncStore { get; }
     public ErpSyncHandlers SyncHandlers { get; }
 

@@ -9,7 +9,10 @@
             <h2>Sedes</h2>
             <p>Las sedes son comunes a toda la suite: el ERP despacha y compra para sus almacenes, el POS vende en las tiendas y el WMS lleva el stock.</p>
         </div>
-        <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nueva sede</button>
+        @if (Session.Can(ErpPermissions.EditCatalog))
+        {
+            <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nueva sede</button>
+        }
     </div>
 
     @if (_sites.Count == 0 && !Loading)

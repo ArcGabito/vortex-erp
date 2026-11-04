@@ -30,7 +30,10 @@
             </select>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
+            @if (Session.Can(ErpPermissions.EditCatalog))
+            {
+                <button class="btn btn-dark" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
+            }
         </div>
     </div>
 
@@ -103,7 +106,7 @@
                                 </td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        <button @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
+                                        <button disabled="@(!Session.Can(ErpPermissions.EditCatalog))" @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
                                     </KebabMenu>
                                 </td>
                             </tr>
@@ -178,9 +181,10 @@
                 <div class="field">
                     <label>Impuesto</label>
                     <select class="select" @bind="f.TaxCode">
-                        <option value="igv">IGV</option>
-                        <option value="exonerado">Exonerado</option>
-                        <option value="inafecto">Inafecto</option>
+                        @foreach (var category in VortexApi.Suite.Taxes.TaxCategories.All)
+                        {
+                            <option value="@category">@Fmt.TaxCategory(category)</option>
+                        }
                     </select>
                 </div>
             </div>
@@ -215,14 +219,14 @@
         public string Unit { get; set; } = "unidad";
         public decimal Price { get; set; }
         public string Currency { get; set; } = "PEN";
-        public string TaxCode { get; set; } = "igv";
+        public string TaxCode { get; set; } = VortexApi.Suite.Taxes.TaxCategories.Standard;
         public string? Description { get; set; }
         public bool TrackInventory { get; set; } = true;
         public bool IsActive { get; set; } = true;
     }
 
     private static readonly string[] Units = ["unidad", "caja", "paquete", "docena", "kg", "g", "litro", "ml", "metro", "par", "servicio"];
-    private static readonly string[] Currencies = ["PEN", "USD"];
+    private static readonly string[] Currencies = VortexApi.Suite.Money.Currencies.List.Select(c => c.Code).ToArray();
 
     private const int PageSize = 12;
     private PagedResult<ItemRow>? _result;
@@ -271,7 +275,7 @@
             : new ItemForm
             {
                 Id = item.Id, Kind = item.Kind, Sku = item.Sku, Name = item.Name, Barcode = item.Barcode, Category = item.Category,
-                Unit = item.Unit, Price = item.Price, Currency = item.CurrencyCode, TaxCode = item.TaxCode ?? "igv",
+                Unit = item.Unit, Price = item.Price, Currency = item.CurrencyCode, TaxCode = VortexApi.Suite.Taxes.TaxCategories.Normalize(item.TaxCode),
                 Description = item.Description, TrackInventory = item.TrackInventory, IsActive = item.IsActive,
             };
     }

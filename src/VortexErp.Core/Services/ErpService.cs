@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using VortexApi.Suite.Auditing;
+using VortexApi.Suite.Taxes;
 using VortexErp.Core.Data;
 using VortexErp.Core.Domain;
 
@@ -43,6 +45,27 @@ public abstract class ErpService(ErpDatabase db, IErpContext context, TimeProvid
 
     protected static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>Corta la operación si el rol del usuario no la permite (el mensaje se muestra tal cual).</summary>
+    protected void RequirePermission(string permission)
+    {
+        if (!Context.Can(permission))
+            throw new ErpValidationException($"Tu rol ({Context.Role}) no permite {ErpPermissions.Describe(permission)}. Pide al administrador que te asigne el rol adecuado en el hub.");
+    }
+
+    /// <summary>Deja la acción en la bitácora, en la misma transacción que la acción.</summary>
+    protected Task AuditAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string action, string entity, Guid? entityId,
+        string? reference, string? detail) =>
+        Audit.WriteAsync(c, tx, new AuditEntry(Guid.NewGuid(), now, Context.UserId, Context.UserName, Context.DeviceTag, action, entity,
+            entityId?.ToString(), reference, detail));
+
+    /// <summary>Régimen de impuesto de la empresa (país y tasa general del hub). Sin datos de la empresa, Perú.</summary>
+    internal static async Task<TaxRegime> TaxRegimeAsync(SqliteConnection c, SqliteTransaction? tx)
+    {
+        var company = await c.FirstOrDefaultAsync("SELECT country_code, default_tax_rate FROM company WHERE id = 1",
+            r => new { Country = r.Str("country_code"), Rate = r.DecOrNull("default_tax_rate") }, tx);
+        return TaxCatalog.For(company?.Country ?? "PE", company?.Rate);
+    }
+
     protected static void Require(bool condition, string message)
     {
         if (!condition)
@@ -81,4 +104,29 @@ internal static class DocumentNumbers
             INSERT INTO document_sequences (prefix, value) VALUES ($p, 1)
             ON CONFLICT (prefix) DO UPDATE SET value = value + 1 RETURNING value
             """, tx, ("$p", prefix));
+}
+/// <summary>Bitácora de acciones sensibles (no se edita ni se borra).</summary>
+internal static class Audit
+{
+    public static Task WriteAsync(SqliteConnection c, SqliteTransaction tx, AuditEntry e) =>
+        c.ExecAsync("""
+            INSERT INTO audit_log (id, at, user_id, user_name, device, action, entity, entity_id, reference, detail)
+            VALUES ($id, $at, $user, $name, $device, $action, $entity, $entityId, $ref, $detail)
+            """, tx, ("$id", e.Id), ("$at", e.At), ("$user", e.UserId), ("$name", e.UserName), ("$device", e.Device),
+            ("$action", e.Action), ("$entity", e.Entity), ("$entityId", e.EntityId), ("$ref", e.Reference), ("$detail", e.Detail));
+}
+
+/// <summary>Consulta de la bitácora.</summary>
+public sealed class AuditService(ErpDatabase db, IErpContext context, TimeProvider clock) : ErpService(db, context, clock)
+{
+    public async Task<PagedResult<AuditRow>> GetAsync(int page, int pageSize, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.ViewAudit);
+        await using var c = await Db.OpenAsync(ct);
+        var total = await c.ScalarAsync<int>("SELECT COUNT(*) FROM audit_log");
+        var rows = await c.QueryAsync("SELECT * FROM audit_log ORDER BY at DESC LIMIT $limit OFFSET $offset", r => new AuditRow(
+            r.Guid("id"), r.Time("at"), r.StrOrNull("user_name"), r.StrOrNull("device"), r.Str("action"), r.Str("entity"),
+            r.StrOrNull("reference"), r.StrOrNull("detail")), null, ("$limit", pageSize), ("$offset", (page - 1) * pageSize));
+        return new PagedResult<AuditRow>(rows, total, page, pageSize);
+    }
 }

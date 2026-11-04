@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <!-- SDK del hub desde el feed local (ver nuget.config y scripts/pack-sdk.*): siempre la versión más alta. -->
     <PackageReference Include="VortexApi.Client" Version="0.*-*" />
+    <!-- Base común de la suite: impuestos por país, monedas, regiones, permisos, auditoría e idiomas. -->
+    <PackageReference Include="VortexApi.Suite" Version="0.*-*" />
   </ItemGroup>
 
   <ItemGroup>

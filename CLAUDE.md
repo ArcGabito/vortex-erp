@@ -26,6 +26,8 @@ scripts/pack-sdk.sh   |   ./scripts/pack-sdk.ps1                         # SDK d
 
 - Cada documento se guarda y encola su evento en la misma transacción (`Outbox`), con el Id del documento como Id del evento.
 - Pedido desde una cotización del CRM: Id `OrderService.OrderIdForQuote(quoteId)` (el CRM calcula el mismo).
+- Impuestos, monedas, formatos y permisos vienen de `VortexApi.Suite`. Cada acción valida `RequirePermission`
+  (`ErpPermissions`) y deja su `AuditAsync` en la misma transacción.
 - Comprobantes con serie por equipo (`F` / `B` + 3 caracteres del equipo). Factura solo a clientes con RUC.
 - El stock es del WMS: el ERP guarda el saldo absoluto de `stock.adjusted` y solo lo valoriza.
 - Los handlers de eventos son idempotentes (`processed_events`) y nunca lanzan por datos inválidos.

@@ -19,12 +19,17 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
     public static Guid OrderIdForQuote(Guid quoteId) => DeterministicId.From("order_from_quote", quoteId);
 
     public Task<string> CreateAsync(Guid customerId, Guid? siteId, IReadOnlyList<DocumentLine> lines, string currencyCode,
-        CancellationToken ct = default) =>
-        InTransactionAsync((c, tx, now) => CreateInternalAsync(c, tx, now, Guid.NewGuid(), customerId, siteId, lines, currencyCode, null), ct);
+        CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.CreateOrder);
+        return InTransactionAsync((c, tx, now) => CreateInternalAsync(c, tx, now, Guid.NewGuid(), customerId, siteId, lines, currencyCode, null), ct);
+    }
 
     /// <summary>Convierte una cotización aceptada del CRM en pedido (o la vincula si el CRM ya lo creó).</summary>
-    public Task<string> ConvertQuoteAsync(Guid quoteId, Guid? siteId, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, now) =>
+    public Task<string> ConvertQuoteAsync(Guid quoteId, Guid? siteId, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.ConvertQuote);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var quote = await c.FirstOrDefaultAsync("SELECT * FROM accepted_quotes WHERE id = $id", r => new
             {
@@ -45,15 +50,21 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
                 r => new DocumentLine(r.Guid("item_id"), r.Dec("quantity"), r.Dec("unit_price")), tx, ("$id", quoteId));
             return await CreateInternalAsync(c, tx, now, orderId, quote.CustomerId!.Value, siteId, lines, quote.Currency, quoteId);
         }, ct);
+    }
 
-    public Task CancelAsync(Guid orderId, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, _) =>
+    public Task CancelAsync(Guid orderId, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.CancelOrder);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var order = await GetAsync(c, tx, orderId);
             Require(order is not null, "El pedido no existe.");
             Require(order!.CanCancel, "Solo se cancela un pedido abierto y sin comprobante.");
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId, order.Number,
+                $"Total {order.Total:0.##} {order.CurrencyCode}");
             return await c.ExecAsync("UPDATE sales_orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
         }, ct);
+    }
 
     // ---------- Consultas ----------
 

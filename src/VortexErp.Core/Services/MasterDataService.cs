@@ -86,14 +86,14 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
         var d = change.Data;
         await using var c = await Db.OpenAsync(ct);
         await c.ExecAsync("""
-            INSERT INTO company (id, legal_name, trade_name, tax_id, country_code, currency_code, version)
-            VALUES (1, $legal, $trade, $tax, $country, $currency, $version)
+            INSERT INTO company (id, legal_name, trade_name, tax_id, country_code, currency_code, default_tax_rate, time_zone, version)
+            VALUES (1, $legal, $trade, $tax, $country, $currency, $rate, $tz, $version)
             ON CONFLICT (id) DO UPDATE SET legal_name = excluded.legal_name, trade_name = excluded.trade_name,
                 tax_id = excluded.tax_id, country_code = excluded.country_code, currency_code = excluded.currency_code,
-                version = excluded.version
+                default_tax_rate = excluded.default_tax_rate, time_zone = excluded.time_zone, version = excluded.version
             WHERE excluded.version > company.version
             """, null, ("$legal", d.LegalName), ("$trade", d.TradeName), ("$tax", d.TaxId), ("$country", d.CountryCode),
-            ("$currency", d.CurrencyCode), ("$version", change.Version));
+            ("$currency", d.CurrencyCode), ("$rate", d.DefaultTaxRate), ("$tz", d.TimeZone), ("$version", change.Version));
     }
 
     private static bool Deleted(VortexChangeOperation operation, VortexMasterMeta meta) =>
@@ -107,6 +107,7 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
 
     private Task<Guid> SaveItemAsync(Guid? existingId, ItemDraft draft, CancellationToken ct)
     {
+        RequirePermission(ErpPermissions.EditCatalog);
         var sku = draft.Sku.Trim().ToUpperInvariant();
         Require(sku.Length > 0, "El SKU es obligatorio.");
         Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
@@ -127,7 +128,7 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
             {
                 sku, name = draft.Name.Trim(), kind = draft.Kind, description = Clean(draft.Description), unit = draft.Unit.Trim().ToLowerInvariant(),
                 barcode = Clean(draft.Barcode), category = Clean(draft.Category), price = draft.Price,
-                currencyCode = draft.CurrencyCode.Trim().ToUpperInvariant(), taxCode = Clean(draft.TaxCode),
+                currencyCode = draft.CurrencyCode.Trim().ToUpperInvariant(), taxCode = VortexApi.Suite.Taxes.TaxCategories.Normalize(draft.TaxCode),
                 trackInventory = draft.Kind == "Product" && draft.TrackInventory, isActive = draft.IsActive,
             };
 
@@ -151,6 +152,7 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
 
     public Task<Guid> CreateSiteAsync(SiteDraft draft, CancellationToken ct = default)
     {
+        RequirePermission(ErpPermissions.EditCatalog);
         var code = draft.Code.Trim().ToUpperInvariant();
         Require(code.Length > 0, "El código es obligatorio.");
         Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
@@ -180,6 +182,7 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
 
     public Task<Guid> CreatePartyAsync(PartyDraft draft, CancellationToken ct = default)
     {
+        RequirePermission(ErpPermissions.CreateParty);
         Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
         Require(draft.IsCustomer || draft.IsSupplier, "Indica si es cliente, proveedor o ambos.");
         var docType = Clean(draft.DocumentType)?.ToUpperInvariant();
@@ -316,7 +319,8 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
     {
         await using var c = await Db.OpenAsync(ct);
         return await c.FirstOrDefaultAsync("SELECT * FROM company WHERE id = 1", r => new CompanyInfo(
-            r.Str("legal_name"), r.StrOrNull("trade_name"), r.StrOrNull("tax_id"), r.Str("country_code"), r.Str("currency_code")));
+            r.Str("legal_name"), r.StrOrNull("trade_name"), r.StrOrNull("tax_id"), r.Str("country_code"), r.Str("currency_code"),
+            r.DecOrNull("default_tax_rate"), r.StrOrNull("time_zone")));
     }
 
     internal static ItemRow ReadItem(SqliteDataReader r) => new(

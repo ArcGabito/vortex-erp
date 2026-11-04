@@ -77,8 +77,8 @@
                                 <td><span class="muted">@s.SiteName</span></td>
                                 <td class="num strong">@Fmt.Money(s.Total, s.CurrencyCode)</td>
                                 <td class="actions-col" style="width:auto;white-space:nowrap">
-                                    <button class="btn btn-sm" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Receipt)">Boleta</button>
-                                    @if (s.CustomerId is not null)
+                                    <button class="btn btn-sm" disabled="@(_busy || !Session.Can(ErpPermissions.IssueInvoice))" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Receipt)">Boleta</button>
+                                    @if (s.CustomerId is not null && Session.Can(ErpPermissions.IssueInvoice))
                                     {
                                         <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Invoice)">Factura</button>
                                     }
@@ -116,7 +116,7 @@
                                 <td class="actions-col" @onclick:stopPropagation>
                                     <KebabMenu>
                                         <button @onclick="() => OpenAsync(i)"><Icon Name="receipt" Size="18" />Ver detalle</button>
-                                        @if (!i.IsPaid)
+                                        @if (!i.IsPaid && Session.Can(ErpPermissions.RegisterPayment))
                                         {
                                             <button @onclick="() => StartPayment(i)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
                                         }
@@ -173,8 +173,8 @@
                     }
                 </div>
                 <dl class="totals">
-                    <dt>Op. gravada y exonerada</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
-                    <dt>IGV</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
+                    <dt>Subtotal</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
+                    <dt>Impuesto</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
                     <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
                     <dt>Cobrado</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
                     <dt>Saldo</dt><dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
@@ -182,7 +182,7 @@
             </div>
         </ChildContent>
         <Footer>
-            @if (!d.IsPaid)
+            @if (!d.IsPaid && Session.Can(ErpPermissions.RegisterPayment))
             {
                 <button class="btn btn-dark" @onclick="() => StartPayment(d)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
             }

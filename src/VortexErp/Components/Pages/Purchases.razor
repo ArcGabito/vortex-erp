@@ -9,7 +9,10 @@
             <h2>Órdenes de compra</h2>
             <p>Al crearlas, el WMS prepara la recepción; cuando recibe la mercadería, la orden se cierra sola.</p>
         </div>
-        <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nueva orden</button>
+        @if (Session.Can(ErpPermissions.CreatePurchase))
+        {
+            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nueva orden</button>
+        }
     </div>
 
     <div class="filters">
@@ -54,7 +57,7 @@
                                 <td class="num strong">@Fmt.Money(o.Total, o.CurrencyCode)</td>
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col" @onclick:stopPropagation>
-                                    @if (o.Status == PurchaseStatuses.Open)
+                                    @if (o.Status == PurchaseStatuses.Open && Session.Can(ErpPermissions.CancelPurchase))
                                     {
                                         <KebabMenu>
                                             <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />Cancelar</button>
