@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Lógica del ERP sin dependencias de UI: base local SQLite, existencias y documentos (recepciones, pedidos,
-    transferencias, ajustes), sincronización con el hub y contratos de los eventos de la suite.
+    Lógica del ERP sin dependencias de UI: base local SQLite, pedidos, comprobantes, cobranzas, compras e inventario valorizado,
+    sincronización con el hub y contratos de los eventos de la suite.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
