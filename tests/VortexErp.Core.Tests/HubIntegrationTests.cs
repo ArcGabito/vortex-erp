@@ -34,7 +34,8 @@ public sealed class HubIntegrationTests : IAsyncLifetime
                 ProductKey = Environment.GetEnvironmentVariable("VORTEX_ERP_KEY") ?? "vxp_erp_dev_key_change_me",
             });
         var sessions = new VortexSessionManager(client, new InMemorySessionStore(), "vortex-erp-integration-tests");
-        await sessions.LoginAsync("luis@vortex.local", "Suite-Local-2026!", "Pruebas Vortex ERP", "tests");
+        // Ana es OrgAdmin de la organización demo: tiene todos los permisos del ERP.
+        await sessions.LoginAsync("ana@vortex.local", "Suite-Local-2026!", "Pruebas Vortex ERP", "tests");
         var sync = _t.Erp.SyncHandlers.Register(new VortexSync(client, sessions, _t.Erp.SyncStore, ErpSyncHandlers.SyncOptions));
 
         var first = await sync.SyncAsync();

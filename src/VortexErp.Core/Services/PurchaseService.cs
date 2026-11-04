@@ -15,6 +15,7 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
     public Task<string> CreateAsync(Guid supplierId, Guid? siteId, IReadOnlyList<DocumentLine> lines, string currencyCode,
         DateOnly? expectedAt = null, CancellationToken ct = default)
     {
+        RequirePermission(ErpPermissions.CreatePurchase);
         Require(supplierId != Guid.Empty, "Elige el proveedor.");
         Require(lines.Count > 0, "Agrega al menos un artículo.");
         Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
@@ -40,13 +41,18 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
     }
 
     /// <summary>Cancela una orden sin recepciones (no se publica: el catálogo v1 no tiene <c>purchase_order.cancelled</c>).</summary>
-    public Task CancelAsync(Guid id, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, _) =>
+    public Task CancelAsync(Guid id, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.CancelPurchase);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM purchase_orders WHERE id = $id", tx, ("$id", id));
             Require(status == PurchaseStatuses.Open, "Solo se cancela una orden sin recepciones.");
+            var number = await c.ScalarAsync<string>("SELECT number FROM purchase_orders WHERE id = $id", tx, ("$id", id));
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "purchase_order", id, number, null);
             return await c.ExecAsync("UPDATE purchase_orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", id));
         }, ct);
+    }
 
     public async Task<PagedResult<PurchaseRow>> GetPurchasesAsync(string? search, string? status, int page, int pageSize, CancellationToken ct = default)
     {

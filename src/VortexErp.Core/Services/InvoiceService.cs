@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using VortexApi.Suite.Auditing;
+using VortexApi.Suite.Taxes;
 using VortexErp.Core.Data;
 using VortexErp.Core.Domain;
 using VortexErp.Core.Integration;
@@ -16,48 +18,52 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
 
     // ---------- Emisión ----------
 
-    public Task<string> IssueFromOrderAsync(Guid orderId, string kind, int creditDays = DefaultCreditDays, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, now) =>
+    public Task<string> IssueFromOrderAsync(Guid orderId, string kind, int creditDays = DefaultCreditDays, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.IssueInvoice);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var order = await OrderService.GetAsync(c, tx, orderId);
             Require(order is not null, "El pedido no existe.");
             Require(order!.CanInvoice, order.InvoiceId is not null ? "El pedido ya tiene comprobante." : "Este pedido no se puede facturar.");
             var lines = await OrderService.LinesAsync(c, tx, orderId);
-            var taxable = await TaxableItemsAsync(c, tx, lines.Select(l => l.ItemId));
-            var invoiceLines = lines.Select(l => new InvoiceLine(l.ItemId, l.ItemName, l.Quantity, l.UnitPrice, l.Total)).ToList();
+            var codes = await TaxCodesAsync(c, tx, lines.Select(l => l.ItemId));
+            var invoiceLines = lines.Select(l => new InvoiceLine(l.ItemId, l.ItemName, l.Quantity, l.UnitPrice, l.Total, codes[l.ItemId])).ToList();
 
             var (id, number) = await IssueAsync(c, tx, now, kind, order.CustomerId, orderId, null, order.CurrencyCode, invoiceLines,
-                l => l.ItemId is { } item && taxable.Contains(item), paid: 0, creditDays);
+                paid: 0, creditDays);
             await c.ExecAsync("UPDATE sales_orders SET invoice_id = $invoice WHERE id = $id", tx, ("$id", orderId), ("$invoice", id));
             return number;
         }, ct);
+    }
 
     /// <summary>
     /// Comprobante de una venta de caja. Lo cobrado en caja queda pagado; solo la parte al crédito queda por cobrar.
     /// El POS anota el número en la venta al recibir <c>invoice.issued</c>.
     /// </summary>
-    public Task<string> IssueFromSaleAsync(Guid saleId, string kind, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, now) =>
+    public Task<string> IssueFromSaleAsync(Guid saleId, string kind, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.IssueInvoice);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var sale = await PosSaleAsync(c, tx, saleId);
             Require(sale is not null, "La venta no existe.");
             Require(sale!.CanInvoice, sale.InvoiceId is not null ? "La venta ya tiene comprobante." : "La venta está anulada.");
             Require(sale.Returned == 0, "La venta tiene devoluciones: emite el comprobante por lo que quedó en un pedido.");
-            var lines = await c.QueryAsync("SELECT * FROM pos_sale_lines WHERE sale_id = $id ORDER BY line_no", r => (
-                Line: new InvoiceLine(r.Guid("item_id"), r.StrOrNull("name") ?? "Artículo", r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total")),
-                Taxable: r.Bool("taxable")), tx, ("$id", saleId));
-            var taxableItems = lines.Where(l => l.Taxable).Select(l => l.Line.ItemId).ToHashSet();
+            var lines = await c.QueryAsync("SELECT * FROM pos_sale_lines WHERE sale_id = $id ORDER BY line_no", r =>
+                new InvoiceLine(r.Guid("item_id"), r.StrOrNull("name") ?? "Artículo", r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total"),
+                    r.StrOrNull("tax_code") ?? (r.Bool("taxable") ? TaxCategories.Standard : TaxCategories.Exempt)), tx, ("$id", saleId));
 
             var (id, number) = await IssueAsync(c, tx, now, kind, sale.CustomerId, null, saleId, sale.CurrencyCode,
-                lines.Select(l => l.Line).ToList(), l => taxableItems.Contains(l.ItemId), paid: sale.Total - sale.Credit,
+                lines, paid: sale.Total - sale.Credit,
                 creditDays: sale.Credit > 0 ? DefaultCreditDays : 0);
             await c.ExecAsync("UPDATE pos_sales SET invoice_id = $invoice WHERE id = $id", tx, ("$id", saleId), ("$invoice", id));
             return number;
         }, ct);
+    }
 
     private async Task<(Guid Id, string Number)> IssueAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string kind,
-        Guid? customerId, Guid? orderId, Guid? saleId, string currency, IReadOnlyList<InvoiceLine> lines, Func<InvoiceLine, bool> isTaxable,
-        decimal paid, int creditDays)
+        Guid? customerId, Guid? orderId, Guid? saleId, string currency, IReadOnlyList<InvoiceLine> lines, decimal paid, int creditDays)
     {
         Require(kind is InvoiceKinds.Invoice or InvoiceKinds.Receipt, "Elige factura o boleta.");
         Require(lines.Count > 0, "El documento no tiene líneas.");
@@ -68,8 +74,9 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(docType == "RUC", "La factura requiere un cliente con RUC. Para personas emite una boleta.");
         }
 
-        var (subtotal, tax) = Tax.Split(lines.Where(isTaxable).Sum(l => l.Total), lines.Where(l => !isTaxable(l)).Sum(l => l.Total));
-        var total = subtotal + tax;
+        // Impuesto del país de la empresa, desglosado por tasa y redondeado con la moneda del comprobante.
+        var breakdown = TaxCalculator.Calculate(lines.Select(l => new TaxableLine(l.Total, l.TaxCode)), await TaxRegimeAsync(c, tx), currency);
+        var (subtotal, tax, total) = (breakdown.Net, breakdown.Tax, breakdown.Total);
         var id = Guid.NewGuid();
         var number = await DocumentNumbers.NextInvoiceAsync(c, tx, kind, Context.DeviceTag);
         var dueDate = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime).AddDays(Math.Max(0, creditDays));
@@ -77,6 +84,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Math.Min(paid, total));
         await InsertInvoiceAsync(c, tx, e, "local", Context.UserName);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceIssued, e, subjectType: "invoice", subjectId: number, id: id);
+        await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", id, number, $"{(kind == InvoiceKinds.Invoice ? "Factura" : "Boleta")} por {total:0.##} {currency}");
         return (id, number);
     }
 
@@ -84,21 +92,23 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
 
     public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, CancellationToken ct = default)
     {
+        RequirePermission(ErpPermissions.RegisterPayment);
         Require(amount > 0, "El monto debe ser mayor que cero.");
         Require(PaymentMethods.All.Contains(method), "Medio de pago desconocido.");
         return InTransactionAsync(async (c, tx, now) =>
-        {
-            var invoice = await GetAsync(c, tx, invoiceId);
-            Require(invoice is not null, "El comprobante no existe.");
-            Require(amount <= invoice!.Balance, $"El saldo del comprobante es {invoice.Balance:0.00}.");
+    {
+        var invoice = await GetAsync(c, tx, invoiceId);
+        Require(invoice is not null, "El comprobante no existe.");
+        Require(amount <= invoice!.Balance, $"El saldo del comprobante es {invoice.Balance:0.00}.");
 
-            var id = Guid.NewGuid();
-            var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);
-            var e = new PaymentReceived(id, invoice.CustomerId, invoiceId, invoice.SaleId, amount, invoice.CurrencyCode, method, number, Clean(reference));
-            await InsertPaymentAsync(c, tx, e, now, Context.UserName);
-            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PaymentReceived, e, subjectType: "invoice", subjectId: invoice.Number, id: id);
-            return number;
-        }, ct);
+        var id = Guid.NewGuid();
+        var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);
+        var e = new PaymentReceived(id, invoice.CustomerId, invoiceId, invoice.SaleId, amount, invoice.CurrencyCode, method, number, Clean(reference));
+        await InsertPaymentAsync(c, tx, e, now, Context.UserName);
+        await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PaymentReceived, e, subjectType: "invoice", subjectId: invoice.Number, id: id);
+        await AuditAsync(c, tx, now, AuditActions.PaymentRegistered, "invoice", invoiceId, invoice.Number, $"{number}: {amount:0.##} {invoice.CurrencyCode} ({method})");
+        return number;
+    }, ct);
     }
 
     // ---------- Consultas ----------
@@ -215,10 +225,11 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         {
             var name = l.Name ?? await c.ScalarAsync<string?>("SELECT name FROM items WHERE id = $id", tx, ("$id", l.ItemId)) ?? l.Sku;
             await c.ExecAsync("""
-                INSERT INTO pos_sale_lines (sale_id, line_no, item_id, name, quantity, unit_price, total, taxable)
-                VALUES ($sale, $no, $item, $name, $qty, $price, $total, $taxable)
+                INSERT INTO pos_sale_lines (sale_id, line_no, item_id, name, quantity, unit_price, total, taxable, tax_code)
+                VALUES ($sale, $no, $item, $name, $qty, $price, $total, $taxable, $taxCode)
                 """, tx, ("$sale", e.SaleId), ("$no", ++lineNo), ("$item", l.ItemId), ("$name", name), ("$qty", l.Quantity),
-                ("$price", l.UnitPrice), ("$total", l.Total), ("$taxable", l.Taxable));
+                ("$price", l.UnitPrice), ("$total", l.Total), ("$taxable", l.Taxable),
+                ("$taxCode", l.TaxCode ?? (l.Taxable ? TaxCategories.Standard : TaxCategories.Exempt)));
         }
     }
 
@@ -244,10 +255,10 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         foreach (var l in e.Lines ?? [])
         {
             await c.ExecAsync("""
-                INSERT INTO invoice_lines (invoice_id, line_no, item_id, description, quantity, unit_price, total)
-                VALUES ($id, $no, $item, $desc, $qty, $price, $total)
+                INSERT INTO invoice_lines (invoice_id, line_no, item_id, description, quantity, unit_price, total, tax_code)
+                VALUES ($id, $no, $item, $desc, $qty, $price, $total, $tax)
                 """, tx, ("$id", e.InvoiceId), ("$no", ++lineNo), ("$item", l.ItemId), ("$desc", l.Description), ("$qty", l.Quantity),
-                ("$price", l.UnitPrice), ("$total", l.Total));
+                ("$price", l.UnitPrice), ("$total", l.Total), ("$tax", l.TaxCode));
         }
     }
 
@@ -263,18 +274,15 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             await c.ExecAsync("UPDATE invoices SET paid = MIN(total, paid + $amount) WHERE id = $id", tx, ("$id", invoice), ("$amount", e.Amount));
     }
 
-    private static async Task<HashSet<Guid>> TaxableItemsAsync(SqliteConnection c, SqliteTransaction tx, IEnumerable<Guid> items)
+    /// <summary>Categoría de impuesto de cada artículo (la del hub; sin dato, tasa general).</summary>
+    private static async Task<Dictionary<Guid, string>> TaxCodesAsync(SqliteConnection c, SqliteTransaction tx, IEnumerable<Guid> items)
     {
-        var set = new HashSet<Guid>();
+        var codes = new Dictionary<Guid, string>();
         foreach (var id in items.Distinct())
-        {
-            // Sin dato del artículo se asume gravado (lo usual en Perú).
-            var code = await c.ScalarAsync<string?>("SELECT COALESCE(tax_code, '') FROM items WHERE id = $id", tx, ("$id", id));
-            if (code is null || string.Equals(code, Tax.IgvCode, StringComparison.OrdinalIgnoreCase))
-                set.Add(id);
-        }
-        return set;
+            codes[id] = TaxCategories.Normalize(await c.ScalarAsync<string?>("SELECT tax_code FROM items WHERE id = $id", tx, ("$id", id)));
+        return codes;
     }
+
 
     private string Today() => DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime).ToString("yyyy-MM-dd");
 

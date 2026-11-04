@@ -29,7 +29,10 @@
             </div>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nuevo registro</button>
+            @if (Session.Can(ErpPermissions.CreateParty))
+            {
+                <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nuevo registro</button>
+            }
         </div>
     </div>
 

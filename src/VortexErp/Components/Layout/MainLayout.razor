@@ -38,6 +38,10 @@
                 <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />Sedes</NavLink>
 
                 <div class="nav-section">Sistema</div>
+                @if (Session.Can(ErpPermissions.ViewAudit))
+                {
+                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />Auditoría</NavLink>
+                }
                 <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
             </nav>
 

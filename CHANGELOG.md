@@ -8,6 +8,17 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Base común de la suite** (`VortexApi.Suite`): impuestos por país (Perú, LATAM, EE. UU., Reino Unido y UE) con
+  desglose por tasa y redondeo según la moneda en pedidos y comprobantes; formatos y hora según el país de la empresa.
+- **Roles del ERP** asignados en el hub: `consulta` (por defecto, solo ve), `facturador`, `compras`, `contador` y
+  `administrador`. Cada acción (pedidos, comprobantes, cobros, compras, catálogo) valida su permiso en Core.
+- **Auditoría** de emisión de comprobantes, cobros y cancelaciones (pantalla Auditoría).
+- `docs/ROADMAP.md`: hoja de ruta para competir con Odoo, SAP Business One, Business Central y NetSuite.
+
+### Changed
+- `invoice.issued` lleva la categoría de impuesto de cada línea (`taxCode`).
+
+### Added
 - App **.NET MAUI Blazor Hybrid** (Windows, Android, iOS, macOS) con la arquitectura de Vortex WMS: base SQLite por
   organización, sesión con el hub `vortex-api` y sincronización sin conexión.
 - **Pedidos de venta** creados en el ERP, recibidos del CRM o del WMS, o convertidos desde cotizaciones aceptadas.

@@ -20,6 +20,14 @@ Este documento resume qué hace el ERP con cada dato y evento, y cómo conviven 
 
 La copia local solo se actualiza desde el feed, por `id` y `version`; un alta queda **POR ENVIAR** hasta que vuelve.
 
+## Impuestos, monedas y permisos (base común de la suite)
+
+- El impuesto sale del país de la empresa y de su tasa general en el hub; se desglosa por tasa según la categoría de
+  cada artículo (`standard`, `reduced`, `zero`, `exempt`…) y se redondea con los decimales de la moneda.
+- Roles del ERP (`session.Access.Role`): `consulta` (sin rol asignado), `facturador` (pedidos, cotizaciones,
+  comprobantes y cobros), `compras` (órdenes de compra), `contador` (comprobantes, cobros y auditoría) y
+  `administrador` (todo, también artículos y sedes). OrgAdmin y PlatformAdmin del hub son administradores.
+
 ## Datos propios del ERP
 
 Pedidos, comprobantes, cobros y órdenes de compra, más lo que informan los demás sistemas: ventas de caja del POS,

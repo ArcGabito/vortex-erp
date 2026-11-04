@@ -1,0 +1,57 @@
+@page "/auditoria"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">Auditoría</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Auditoría</h2>
+            <p>Acciones sensibles registradas en este equipo: emisión de comprobantes, cobros y cancelaciones.</p>
+        </div>
+    </div>
+
+    @if (!Session.Can(ErpPermissions.ViewAudit))
+    {
+        <EmptyState Icon="lock" Title="Sin acceso" Text="Tu rol no permite ver la auditoría." />
+    }
+    else if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="list" Title="Aún no hay acciones registradas" />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Cuándo</th><th>Usuario</th><th>Acción</th><th>Documento</th><th>Detalle</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in page.Items)
+                        {
+                            <tr @key="e.Id">
+                                <td><span class="muted">@Fmt.DateTime(e.At)</span></td>
+                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(e.UserName ?? "—")</span><span class="t2">Equipo @e.Device</span></div></td>
+                                <td><StatusPill Text="@Fmt.AuditAction(e.Action)" Tone="@(e.Action is "document.cancelled" or "document.voided" ? "warn" : "neutral")" /></td>
+                                <td>@(e.Reference ?? "—")</td>
+                                <td style="white-space:normal"><span class="muted">@e.Detail</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="acciones" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@code {
+    private PagedResult<AuditRow>? _result;
+    private int _page = 1;
+
+    protected override async Task LoadAsync()
+    {
+        if (Session.Can(ErpPermissions.ViewAudit))
+            _result = await Erp.Audit.GetAsync(_page, 20);
+    }
+}

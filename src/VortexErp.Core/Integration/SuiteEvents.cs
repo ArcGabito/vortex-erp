@@ -34,7 +34,8 @@ public sealed record OrderCreated(
     Guid OrderId, string? Number, Guid CustomerId, Guid? SiteId, IReadOnlyList<OrderLine>? Lines, decimal Total, string? CurrencyCode,
     Guid? QuoteId = null);
 
-public sealed record InvoiceLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total);
+/// <summary>Línea del comprobante; <c>taxCode</c> es la categoría de impuesto de la base común (extiende v1).</summary>
+public sealed record InvoiceLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null);
 
 /// <summary><c>invoice.issued</c>. Extiende v1 con <c>kind</c>, <c>subtotal</c>, <c>tax</c>, <c>dueDate</c> y <c>lines</c>.</summary>
 public sealed record InvoiceIssued(
@@ -57,7 +58,7 @@ public sealed record PurchaseOrderCreated(
 // ---------- Consumidos por el ERP ----------
 
 public sealed record SaleLine(Guid ItemId, string? Sku, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total,
-    string? Name = null, bool Taxable = true);
+    string? Name = null, bool Taxable = true, string? TaxCode = null);
 
 public sealed record SalePayment(string Method, decimal Amount);
 

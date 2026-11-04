@@ -7,7 +7,8 @@ using VortexErp.Core.Domain;
 namespace VortexErp.Core.Tests;
 
 /// <summary>Workspace sobre una base SQLite temporal, con sedes, clientes, un proveedor y artículos ya sincronizados desde el "hub".</summary>
-public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
+public sealed class TestWorkspace(string deviceTag = "TEST", string role = "administrador", string country = "PE", string currency = "PEN",
+    decimal? taxRate = null) : IAsyncLifetime
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"vortex-erp-test-{Guid.NewGuid():N}.db");
 
@@ -21,14 +22,16 @@ public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
     public Guid Customer { get; } = Guid.Parse("33333333-0000-0000-0000-000000000001");   // empresa con RUC
     public Guid Person { get; } = Guid.Parse("33333333-0000-0000-0000-000000000002");     // persona con DNI
     public Guid Supplier { get; } = Guid.Parse("33333333-0000-0000-0000-000000000003");
+    public TestContext Context { get; } = new(deviceTag, Guid.Parse("11111111-0000-0000-0000-000000000001"), role);
 
     public async Task InitializeAsync()
     {
-        Erp = await ErpWorkspace.OpenAsync(_path, new Context(deviceTag, Central), Clock);
+        Erp = await ErpWorkspace.OpenAsync(_path, Context, Clock);
+        await Erp.Master.ApplyCompanyAsync(Company(country, currency, taxRate));
         await Erp.Master.ApplySiteAsync(Site(Central, "ALM-01", "Almacén central", "Warehouse"));
         await Erp.Master.ApplySiteAsync(Site(Store, "TDA-01", "Tienda Miraflores", "Store"));
-        await Erp.Master.ApplyItemAsync(Item(Coffee, "CAFE-250", "Café tostado 250 g", 18.50m));
-        await Erp.Master.ApplyItemAsync(Item(Bread, "PAN-01", "Pan francés", 0.50m, taxCode: null));
+        await Erp.Master.ApplyItemAsync(Item(Coffee, "CAFE-250", "Café tostado 250 g", 18.50m, currency: currency));
+        await Erp.Master.ApplyItemAsync(Item(Bread, "PAN-01", "Pan francés", 0.50m, taxCode: "exonerado", currency: currency));
         await Erp.Master.ApplyPartyAsync(Party(Customer, "Bodega Don Pepe", "RUC", "20123456789"));
         await Erp.Master.ApplyPartyAsync(Party(Person, "Rosa Quispe", "DNI", "45678912"));
         await Erp.Master.ApplyPartyAsync(Party(Supplier, "Café del Valle SAC", "RUC", "20987654321", supplier: true));
@@ -45,9 +48,9 @@ public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
     public async Task<List<VortexOutboxEntry>> OutboxAsync() => (await Erp.SyncStore.PeekAsync(1000)).ToList();
 
     public static VortexMasterChange<VortexItem> Item(Guid id, string sku, string name, decimal price, int version = 1,
-        string? taxCode = "igv") =>
+        string? taxCode = "igv", string currency = "PEN") =>
         new(version, id, VortexChangeOperation.Created, version, DateTimeOffset.UtcNow, "HUB",
-            new VortexItem(id, sku, name, "Product", null, "unidad", null, "Abarrotes", price, "PEN", taxCode, true, true,
+            new VortexItem(id, sku, name, "Product", null, "unidad", null, "Abarrotes", price, currency, taxCode, true, true,
                 new VortexMasterMeta(version, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null)));
 
     public static VortexMasterChange<VortexSite> Site(Guid id, string code, string name, string kind) =>
@@ -69,11 +72,20 @@ public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
         new(entry.Id, 1, entry.EventType!, source, 1, entry.SubjectType, entry.SubjectId, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
             null, entry.Payload!.Value);
 
-    private sealed class Context(string deviceTag, Guid site) : IErpContext
+    public static VortexMasterChange<VortexCompany> Company(string country, string currency, decimal? taxRate) =>
+        new(1, Guid.Empty, VortexChangeOperation.Created, 1, DateTimeOffset.UtcNow, "HUB",
+            new VortexCompany(Guid.NewGuid(), "Comercial Demo SAC", null, null, country, currency, "America/Lima",
+                taxRate ?? VortexApi.Suite.Taxes.TaxCatalog.For(country).StandardRate * 100, null, null, null,
+                new VortexMasterMeta(1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null)));
+
+    /// <summary>Usuario de prueba; el rol se puede cambiar a mitad de una prueba.</summary>
+    public sealed class TestContext(string deviceTag, Guid site, string role) : IErpContext
     {
         public Guid? UserId => Guid.Parse("00000000-0000-0000-0000-000000000001");
         public string UserName => "Luis";
         public string DeviceTag => deviceTag;
         public Guid? DefaultSiteId => site;
+        public string Role { get; set; } = role;
+        public bool Can(string permission) => ErpPermissions.Matrix.Can(Role, "User", permission);
     }
 }
