@@ -1,5 +1,7 @@
 using VortexApi.Client;
 
+using static VortexErp.Services.Txt;
+
 namespace VortexErp.Services;
 
 /// <summary>Mensajes para el usuario según el <c>code</c> estable de los errores del hub (SISTEMAS.md, sección 8).</summary>
@@ -7,25 +9,25 @@ public static class HubErrors
 {
     public static string For(VortexApiException ex) => ex.Code switch
     {
-        "invalid_credentials" => "Correo o contraseña incorrectos.",
-        "account_locked" => "La cuenta está bloqueada temporalmente por varios intentos fallidos. Intenta más tarde.",
-        "invalid_product" => "La clave de sistema del ERP no es válida para este hub. Revisa la configuración del servidor.",
-        "product_not_enabled" or "product_disabled" => "Vortex ERP no está habilitado para tu organización.",
-        "access_expired" => "Tu acceso a Vortex ERP venció. Pide a tu administrador que lo renueve.",
-        "no_access" => "Tu usuario no tiene acceso a Vortex ERP.",
-        "organization_disabled" => "La organización está desactivada.",
-        "account_disabled" => "Tu cuenta está desactivada.",
-        "user_limit_reached" => "Tu organización alcanzó el límite de usuarios del ERP. Contacta a tu administrador.",
-        "device_limit_reached" => "Tu organización alcanzó el límite de equipos. Contacta a tu administrador.",
-        "device_revoked" => "Este equipo fue dado de baja. Contacta a tu administrador.",
-        "device_mismatch" => "La sesión pertenece a otro equipo. Inicia sesión de nuevo.",
-        "refresh_token_reused" or "invalid_refresh_token" => "Por seguridad se cerró la sesión. Inicia sesión de nuevo.",
-        "not_signed_in" => "Inicia sesión para continuar.",
-        "duplicate_document" => "Ya existe un cliente o proveedor con ese documento.",
-        "duplicate_sku" => "Ya existe un artículo con ese SKU.",
-        "duplicate_code" => "Ya existe una sede con ese código.",
-        "invalid_document" => "El documento no es válido (RUC de 11 dígitos, DNI de 8).",
-        "validation_error" => "Hay datos inválidos: " + ex.Message,
+        "invalid_credentials" => T("huberrors.correo_contrasena_incorrectos"),
+        "account_locked" => T("huberrors.la_cuenta_esta_bloqueada_temporalmente"),
+        "invalid_product" => T("huberrors.la_clave_de_sistema_del"),
+        "product_not_enabled" or "product_disabled" => T("huberrors.vortex_erp_no_esta_habilitado"),
+        "access_expired" => T("huberrors.tu_acceso_vortex_erp_vencio"),
+        "no_access" => T("huberrors.tu_usuario_no_tiene_acceso"),
+        "organization_disabled" => T("huberrors.la_organizacion_esta_desactivada"),
+        "account_disabled" => T("huberrors.tu_cuenta_esta_desactivada"),
+        "user_limit_reached" => T("huberrors.tu_organizacion_alcanzo_el_limite"),
+        "device_limit_reached" => T("huberrors.tu_organizacion_alcanzo_el_limite_2"),
+        "device_revoked" => T("huberrors.este_equipo_fue_dado_de"),
+        "device_mismatch" => T("huberrors.la_sesion_pertenece_otro_equipo"),
+        "refresh_token_reused" or "invalid_refresh_token" => T("huberrors.por_seguridad_se_cerro_la"),
+        "not_signed_in" => T("huberrors.inicia_sesion_para_continuar"),
+        "duplicate_document" => T("huberrors.ya_existe_un_cliente_proveedor"),
+        "duplicate_sku" => T("huberrors.ya_existe_un_articulo_con"),
+        "duplicate_code" => T("huberrors.ya_existe_una_sede_con"),
+        "invalid_document" => T("huberrors.el_documento_no_es_valido"),
+        "validation_error" => T("huberrors.hay_datos_invalidos") + ex.Message,
         _ => $"{ex.Message} ({ex.Code})",
     };
 

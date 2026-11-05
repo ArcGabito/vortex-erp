@@ -1,49 +1,49 @@
 @page "/comprobantes"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Comprobantes</SectionContent>
+<SectionContent SectionName="page-title">@T("invoices.comprobantes_2")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Comprobantes</h2>
-            <p>Facturas y boletas emitidas desde pedidos y ventas de caja. El CRM y el POS ven los comprobantes de sus clientes.</p>
+            <h2>@T("invoices.comprobantes_2")</h2>
+            <p>@T("invoices.facturas_boletas_emitidas_desde_pedidos")</p>
         </div>
     </div>
 
     <div class="filters">
         <div class="field" style="width:auto">
-            <label>Ver</label>
+            <label>@T("invoices.ver")</label>
             <div class="segmented">
-                <button class="@(!_posTab ? "on" : "")" @onclick="async () => { _posTab = false; _page = 1; await ReloadAsync(); }">Emitidos</button>
+                <button class="@(!_posTab ? "on" : "")" @onclick="async () => { _posTab = false; _page = 1; await ReloadAsync(); }">@T("invoices.emitidos")</button>
                 <button class="@(_posTab ? "on" : "")" @onclick="async () => { _posTab = true; _page = 1; await ReloadAsync(); }">
-                    Ventas de caja sin comprobante@(_posPending > 0 ? $" ({_posPending})" : "")
+                    @T("invoices.ventas_de_caja_sin_comprobante", (_posPending > 0 ? $" ({_posPending})" : ""))
                 </button>
             </div>
         </div>
         @if (!_posTab)
         {
             <div class="field search">
-                <label>Buscar</label>
+                <label>@T("invoices.buscar")</label>
                 <div class="input-icon">
                     <Icon Name="search" Size="16" />
-                    <input class="control" placeholder="Número, cliente o RUC" value="@_search" @oninput="OnSearchInput" />
+                    <input class="control" placeholder="@(T("invoices.numero_cliente_ruc"))" value="@_search" @oninput="OnSearchInput" />
                 </div>
             </div>
             <div class="field">
-                <label>Tipo</label>
+                <label>@T("invoices.tipo")</label>
                 <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
-                    <option value="">Todos</option>
-                    <option value="@InvoiceKinds.Invoice">Facturas</option>
-                    <option value="@InvoiceKinds.Receipt">Boletas</option>
+                    <option value="">@T("invoices.todos")</option>
+                    <option value="@InvoiceKinds.Invoice">@T("invoices.facturas")</option>
+                    <option value="@InvoiceKinds.Receipt">@T("invoices.boletas")</option>
                 </select>
             </div>
             <div class="field" style="width:auto">
-                <label>Estado</label>
+                <label>@T("invoices.estado")</label>
                 <div class="segmented">
-                    <button class="@(_unpaid is null ? "on" : "")" @onclick="async () => { _unpaid = null; _page = 1; await ReloadAsync(); }">Todos</button>
-                    <button class="@(_unpaid == true ? "on" : "")" @onclick="async () => { _unpaid = true; _page = 1; await ReloadAsync(); }">Por cobrar</button>
-                    <button class="@(_unpaid == false ? "on" : "")" @onclick="async () => { _unpaid = false; _page = 1; await ReloadAsync(); }">Pagados</button>
+                    <button class="@(_unpaid is null ? "on" : "")" @onclick="async () => { _unpaid = null; _page = 1; await ReloadAsync(); }">@T("invoices.todos")</button>
+                    <button class="@(_unpaid == true ? "on" : "")" @onclick="async () => { _unpaid = true; _page = 1; await ReloadAsync(); }">@T("invoices.por_cobrar")</button>
+                    <button class="@(_unpaid == false ? "on" : "")" @onclick="async () => { _unpaid = false; _page = 1; await ReloadAsync(); }">@T("invoices.pagados")</button>
                 </div>
             </div>
         }
@@ -53,13 +53,13 @@
     {
         @if (sales.Total == 0 && !Loading)
         {
-            <EmptyState Icon="receipt" Title="Nada pendiente" Text="Las ventas del POS que aún no tienen comprobante aparecen aquí." />
+            <EmptyState Icon="receipt" Title="@(T("invoices.nada_pendiente"))" Text="@(T("invoices.las_ventas_del_pos_que"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Venta de caja</th><th>Cliente</th><th>Tienda</th><th class="num">Total</th><th class="actions-col"></th></tr></thead>
+                    <thead><tr><th>@T("invoices.venta_de_caja")</th><th>@T("invoices.cliente")</th><th>@T("invoices.tienda")</th><th class="num">@T("invoices.total")</th><th class="actions-col"></th></tr></thead>
                     <tbody>
                         @foreach (var s in sales.Items)
                         {
@@ -67,20 +67,20 @@
                                 <td><div class="two-line"><span class="t1">@s.Number</span><span class="t2">@Fmt.DateTime(s.CreatedAt)</span></div></td>
                                 <td>
                                     <div class="two-line">
-                                        <span class="t1" style="font-weight:600">@(s.CustomerName ?? "Clientes varios")</span>
+                                        <span class="t1" style="font-weight:600">@(s.CustomerName ?? T("invoices.clientes_varios"))</span>
                                         @if (s.Credit > 0)
                                         {
-                                            <span class="t2">@Fmt.Money(s.Credit, s.CurrencyCode) al crédito</span>
+                                            <span class="t2">@T("invoices.al_credito", (Fmt.Money(s.Credit, s.CurrencyCode)))</span>
                                         }
                                     </div>
                                 </td>
                                 <td><span class="muted">@s.SiteName</span></td>
                                 <td class="num strong">@Fmt.Money(s.Total, s.CurrencyCode)</td>
                                 <td class="actions-col" style="width:auto;white-space:nowrap">
-                                    <button class="btn btn-sm" disabled="@(_busy || !Session.Can(ErpPermissions.IssueInvoice))" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Receipt)">Boleta</button>
+                                    <button class="btn btn-sm" disabled="@(_busy || !Session.Can(ErpPermissions.IssueInvoice))" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Receipt)">@T("invoices.boleta")</button>
                                     @if (s.CustomerId is not null && Session.Can(ErpPermissions.IssueInvoice))
                                     {
-                                        <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Invoice)">Factura</button>
+                                        <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => IssueSaleAsync(s, InvoiceKinds.Invoice)">@T("invoices.factura")</button>
                                     }
                                 </td>
                             </tr>
@@ -88,37 +88,37 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="sales.Page" PageSize="sales.PageSize" Total="sales.Total" Noun="ventas" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="sales.Page" PageSize="sales.PageSize" Total="sales.Total" Noun="@(T("invoices.ventas"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
     else if (_result is { } page)
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="receipt" Title="No hay comprobantes" Text="Emítelos desde un pedido o desde una venta de caja." />
+            <EmptyState Icon="receipt" Title="@(T("invoices.no_hay_comprobantes"))" Text="@(T("invoices.emitelos_desde_un_pedido_desde"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Comprobante</th><th>Cliente</th><th>Vence</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th><th class="actions-col">Acciones</th></tr></thead>
+                    <thead><tr><th>@T("invoices.comprobante")</th><th>@T("invoices.cliente")</th><th>@T("invoices.vence")</th><th class="num">@T("invoices.total")</th><th class="num">@T("invoices.saldo_2")</th><th>@T("invoices.estado")</th><th class="actions-col">@T("invoices.acciones")</th></tr></thead>
                     <tbody>
                         @foreach (var i in page.Items)
                         {
                             var (text, tone) = StatusPill.ForInvoice(i, Fmt.Today);
                             <tr @key="i.Id" style="cursor:pointer" @onclick="() => OpenAsync(i)">
                                 <td><div class="two-line"><span class="t1">@i.Number</span><span class="t2">@Fmt.InvoiceKind(i.Kind) · @Fmt.Date(i.IssuedAt)</span></div></td>
-                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(i.CustomerName ?? "Clientes varios")</span><span class="t2">@i.CustomerDocument</span></div></td>
+                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(i.CustomerName ?? T("invoices.clientes_varios"))</span><span class="t2">@i.CustomerDocument</span></div></td>
                                 <td><span class="muted">@(i.DueDate is { } due ? Fmt.Date(due) : "—")</span></td>
                                 <td class="num">@Fmt.Money(i.Total, i.CurrencyCode)</td>
                                 <td class="num strong">@Fmt.Money(i.Balance, i.CurrencyCode)</td>
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col" @onclick:stopPropagation>
                                     <KebabMenu>
-                                        <button @onclick="() => OpenAsync(i)"><Icon Name="receipt" Size="18" />Ver detalle</button>
+                                        <button @onclick="() => OpenAsync(i)"><Icon Name="receipt" Size="18" />@T("invoices.ver_detalle")</button>
                                         @if (!i.IsPaid && Session.Can(ErpPermissions.RegisterPayment))
                                         {
-                                            <button @onclick="() => StartPayment(i)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
+                                            <button @onclick="() => StartPayment(i)"><Icon Name="wallet" Size="18" />@T("invoices.registrar_cobro")</button>
                                         }
                                     </KebabMenu>
                                 </td>
@@ -127,7 +127,7 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="comprobantes" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("invoices.comprobantes"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
@@ -139,11 +139,11 @@
         <ChildContent>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <StatusPill Text="@text" Tone="@tone" />
-                <span class="muted">@(d.SaleId is not null ? "Venta de caja" : d.OrderId is not null ? "Pedido" : "")@(d.DueDate is { } due ? $" · vence el {Fmt.Date(due)}" : "")</span>
+                <span class="muted">@(d.SaleId is not null ? T("invoices.venta_de_caja") : d.OrderId is not null ? T("invoices.pedido") : "")@(d.DueDate is { } due ? T("invoices.vence_el", Fmt.Date(due)) : "")</span>
             </div>
             <div class="table-wrap">
                 <table class="data" style="min-width:480px">
-                    <thead><tr><th>Descripción</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
+                    <thead><tr><th>@T("invoices.descripcion")</th><th class="num">@T("invoices.cant")</th><th class="num">@T("invoices.precio")</th><th class="num">@T("invoices.importe")</th></tr></thead>
                     <tbody>
                         @foreach (var l in _lines)
                         {
@@ -159,10 +159,10 @@
             </div>
             <div class="grid-2" style="grid-template-columns:1fr 1fr">
                 <div>
-                    <h4 style="font-size:14px;margin-bottom:8px">Cobros</h4>
+                    <h4 style="font-size:14px;margin-bottom:8px">@T("invoices.cobros")</h4>
                     @if (_payments.Count == 0)
                     {
-                        <span class="muted">@(d.Paid > 0 ? "Pagado en caja." : "Aún sin cobros.")</span>
+                        <span class="muted">@(d.Paid > 0 ? T("invoices.pagado_en_caja") : T("invoices.aun_sin_cobros"))</span>
                     }
                     @foreach (var p in _payments)
                     {
@@ -173,22 +173,22 @@
                     }
                 </div>
                 <dl class="totals">
-                    <dt>Subtotal</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
-                    <dt>Impuesto</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
-                    <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
-                    <dt>Cobrado</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
-                    <dt>Saldo</dt><dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
+                    <dt>@T("invoices.subtotal")</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
+                    <dt>@T("invoices.impuesto")</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
+                    <dt class="grand">@T("invoices.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
+                    <dt>@T("invoices.cobrado")</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
+                    <dt>@T("invoices.saldo_2")</dt><dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
                 </dl>
             </div>
         </ChildContent>
         <Footer>
             @if (!d.IsPaid && Session.Can(ErpPermissions.RegisterPayment))
             {
-                <button class="btn btn-dark" @onclick="() => StartPayment(d)"><Icon Name="wallet" Size="18" />Registrar cobro</button>
+                <button class="btn btn-dark" @onclick="() => StartPayment(d)"><Icon Name="wallet" Size="18" />@T("invoices.registrar_cobro")</button>
             }
             else
             {
-                <button class="btn btn-dark" @onclick="() => _detail = null">Cerrar</button>
+                <button class="btn btn-dark" @onclick="() => _detail = null">@T("invoices.cerrar")</button>
             }
         </Footer>
     </Modal>
@@ -196,14 +196,14 @@
 
 @if (_paying is { } pay)
 {
-    <Modal Title="Registrar cobro" Subtitle="@($"{pay.Number} · saldo {Fmt.Money(pay.Balance, pay.CurrencyCode)}")" Size="sm" Error="@_error" OnClose="() => _paying = null">
+    <Modal Title="@(T("invoices.registrar_cobro"))" Subtitle="@(T("invoices.saldo", pay.Number, (Fmt.Money(pay.Balance, pay.CurrencyCode))))" Size="sm" Error="@_error" OnClose="() => _paying = null">
         <ChildContent>
             <div class="field">
-                <label>Monto (@Fmt.Symbol(pay.CurrencyCode))</label>
+                <label>@T("invoices.monto", Fmt.Symbol(pay.CurrencyCode))</label>
                 <input class="control" type="number" min="0" step="0.01" @bind="_amount" />
             </div>
             <div class="field">
-                <label>Medio de pago</label>
+                <label>@T("invoices.medio_de_pago")</label>
                 <select class="select" @bind="_method">
                     @foreach (var m in PaymentMethods.All)
                     {
@@ -212,13 +212,13 @@
                 </select>
             </div>
             <div class="field">
-                <label>Referencia (opcional)</label>
-                <input class="control" placeholder="N.° de operación" @bind="_reference" />
+                <label>@T("invoices.referencia_opcional")</label>
+                <input class="control" placeholder="@(T("invoices.de_operacion"))" @bind="_reference" />
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="() => _paying = null">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="PayAsync">Registrar cobro</button>
+            <button class="btn" @onclick="() => _paying = null">@T("invoices.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="PayAsync">@T("invoices.registrar_cobro")</button>
         </Footer>
     </Modal>
 }
@@ -314,7 +314,7 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"Cobro {number} registrado.");
+            Toasts.Success(T("invoices.cobro_registrado", number));
             _paying = null;
         }
     }
@@ -326,7 +326,7 @@
         await RunAsync(async () => number = await Erp.Invoices.IssueFromSaleAsync(sale.Id, kind));
         _busy = false;
         if (number is not null)
-            Toasts.Success($"{Fmt.InvoiceKind(kind)} {number} emitida para {sale.Number}.");
+            Toasts.Success(T("invoices.emitida_para", Fmt.InvoiceKind(kind), number, sale.Number));
     }
 
     public override void Dispose()

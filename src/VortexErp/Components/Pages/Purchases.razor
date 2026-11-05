@@ -1,30 +1,30 @@
 @page "/compras"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Compras</SectionContent>
+<SectionContent SectionName="page-title">@T("purchases.compras")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Órdenes de compra</h2>
-            <p>Al crearlas, el WMS prepara la recepción; cuando recibe la mercadería, la orden se cierra sola.</p>
+            <h2>@T("purchases.ordenes_de_compra")</h2>
+            <p>@T("purchases.al_crearlas_el_wms_prepara")</p>
         </div>
         @if (Session.Can(ErpPermissions.CreatePurchase))
         {
-            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nueva orden</button>
+            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />@T("purchases.nueva_orden")</button>
         }
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("purchases.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Número o proveedor" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("purchases.numero_proveedor"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field" style="width:auto">
-            <label>Mostrar</label>
+            <label>@T("purchases.mostrar")</label>
             <div class="segmented">
                 @foreach (var (value, label) in Tabs)
                 {
@@ -38,19 +38,19 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="truck" Title="No hay órdenes de compra" Text="Crea una orden para reponer stock con tus proveedores." />
+            <EmptyState Icon="truck" Title="@(T("purchases.no_hay_ordenes_de_compra"))" Text="@(T("purchases.crea_una_orden_para_reponer"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Orden</th><th>Proveedor</th><th>Recibe</th><th class="num">Recibido</th><th class="num">Total</th><th>Estado</th><th class="actions-col"></th></tr></thead>
+                    <thead><tr><th>@T("purchases.orden_2")</th><th>@T("purchases.proveedor")</th><th>@T("purchases.recibe")</th><th class="num">@T("purchases.recibido")</th><th class="num">@T("purchases.total")</th><th>@T("purchases.estado")</th><th class="actions-col"></th></tr></thead>
                     <tbody>
                         @foreach (var o in page.Items)
                         {
                             var (text, tone) = StatusPill.ForPurchase(o.Status);
                             <tr @key="o.Id" style="cursor:pointer" @onclick="() => OpenAsync(o)">
-                                <td><div class="two-line"><span class="t1">@o.Number</span><span class="t2">@Fmt.Date(o.CreatedAt)@(o.ExpectedAt is { } exp ? $" · llega el {Fmt.Date(exp)}" : "")</span></div></td>
+                                <td><div class="two-line"><span class="t1">@o.Number</span><span class="t2">@Fmt.Date(o.CreatedAt)@(o.ExpectedAt is { } exp ? T("purchases.llega_el", Fmt.Date(exp)) : "")</span></div></td>
                                 <td><span style="font-weight:600">@o.SupplierName</span></td>
                                 <td><span class="muted">@o.SiteName</span></td>
                                 <td class="num">@Fmt.Qty(o.Received) / @Fmt.Qty(o.Ordered)</td>
@@ -60,7 +60,7 @@
                                     @if (o.Status == PurchaseStatuses.Open && Session.Can(ErpPermissions.CancelPurchase))
                                     {
                                         <KebabMenu>
-                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />Cancelar</button>
+                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />@T("purchases.cancelar")</button>
                                         </KebabMenu>
                                     }
                                 </td>
@@ -69,20 +69,20 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="órdenes" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("purchases.ordenes"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
 
 @if (_new is { } n)
 {
-    <Modal Title="Nueva orden de compra" Subtitle="El WMS la verá como recepción por recibir." Size="lg" Error="@_error" OnClose="() => _new = null">
+    <Modal Title="@(T("purchases.nueva_orden_de_compra"))" Subtitle="@(T("purchases.el_wms_la_vera_como"))" Size="lg" Error="@_error" OnClose="() => _new = null">
         <ChildContent>
             <div class="form-row three">
                 <div class="field">
-                    <label>Proveedor</label>
+                    <label>@T("purchases.proveedor")</label>
                     <select class="select" @bind="n.SupplierId">
-                        <option value="">Elige un proveedor</option>
+                        <option value="">@T("purchases.elige_un_proveedor")</option>
                         @foreach (var s in _suppliers)
                         {
                             <option value="@s.Id">@s.Label</option>
@@ -90,9 +90,9 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Almacén que recibe</label>
+                    <label>@T("purchases.almacen_que_recibe")</label>
                     <select class="select" @bind="n.SiteId">
-                        <option value="">Sede por defecto</option>
+                        <option value="">@T("purchases.sede_por_defecto")</option>
                         @foreach (var s in _sites)
                         {
                             <option value="@s.Id">@s.Name</option>
@@ -100,18 +100,18 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Llega el (opcional)</label>
+                    <label>@T("purchases.llega_el_opcional")</label>
                     <input class="control" type="date" @bind="n.ExpectedAt" />
                 </div>
             </div>
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="Costo unitario" Changed="StateHasChanged" />
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("purchases.costo_unitario"))" Changed="StateHasChanged" />
             <dl class="totals">
-                <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
+                <dt class="grand">@T("purchases.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
             </dl>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="() => _new = null">Cancelar</button>
-            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.SupplierId is null)" @onclick="CreateAsync">Crear orden</button>
+            <button class="btn" @onclick="() => _new = null">@T("purchases.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.SupplierId is null)" @onclick="CreateAsync">@T("purchases.crear_orden")</button>
         </Footer>
     </Modal>
 }
@@ -119,12 +119,12 @@
 @if (_detail is { } d)
 {
     var (text, tone) = StatusPill.ForPurchase(d.Status);
-    <Modal Title="@($"Orden {d.Number}")" Subtitle="@($"{d.SupplierName} · {d.SiteName}")" Size="lg" OnClose="() => _detail = null">
+    <Modal Title="@(T("purchases.orden", d.Number))" Subtitle="@($"{d.SupplierName} · {d.SiteName}")" Size="lg" OnClose="() => _detail = null">
         <ChildContent>
             <div><StatusPill Text="@text" Tone="@tone" /></div>
             <div class="table-wrap">
                 <table class="data" style="min-width:480px">
-                    <thead><tr><th>Artículo</th><th class="num">Pedido</th><th class="num">Recibido</th><th class="num">Costo</th><th class="num">Importe</th></tr></thead>
+                    <thead><tr><th>@T("purchases.articulo")</th><th class="num">@T("purchases.pedido")</th><th class="num">@T("purchases.recibido")</th><th class="num">@T("purchases.costo")</th><th class="num">@T("purchases.importe")</th></tr></thead>
                     <tbody>
                         @foreach (var l in _lines)
                         {
@@ -139,10 +139,10 @@
                     </tbody>
                 </table>
             </div>
-            <dl class="totals"><dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
+            <dl class="totals"><dt class="grand">@T("purchases.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
         </ChildContent>
         <Footer>
-            <button class="btn btn-dark" @onclick="() => _detail = null">Cerrar</button>
+            <button class="btn btn-dark" @onclick="() => _detail = null">@T("purchases.cerrar")</button>
         </Footer>
     </Modal>
 }
@@ -157,7 +157,7 @@
     }
 
     private static readonly (string Value, string Label)[] Tabs =
-        [("pending", "Por recibir"), (PurchaseStatuses.Received, "Recibidas"), (PurchaseStatuses.Cancelled, "Canceladas"), ("", "Todas")];
+        [("pending", T("purchases.por_recibir")), (PurchaseStatuses.Received, T("purchases.recibidas")), (PurchaseStatuses.Cancelled, T("purchases.canceladas")), ("", T("purchases.todas"))];
 
     private PagedResult<PurchaseRow>? _result;
     private IReadOnlyList<Option> _suppliers = [];
@@ -212,7 +212,7 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"Orden {number} creada.");
+            Toasts.Success(T("purchases.orden_creada", number));
             _new = null;
         }
     }
@@ -223,7 +223,7 @@
         _detail = order;
     }
 
-    private Task CancelAsync(PurchaseRow order) => RunAsync(() => Erp.Purchases.CancelAsync(order.Id), $"Orden {order.Number} cancelada.");
+    private Task CancelAsync(PurchaseRow order) => RunAsync(() => Erp.Purchases.CancelAsync(order.Id), T("purchases.orden_cancelada", order.Number));
 
     public override void Dispose()
     {

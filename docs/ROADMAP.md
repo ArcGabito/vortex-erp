@@ -34,7 +34,8 @@ Tamaños (S, M, L, XL) relativos entre fases.
 - **Moneda del documento** con redondeo según la moneda.
 - **Roles del ERP**: `administrador`, `contador`, `facturador`, `compras`, `consulta`; se validan en los servicios.
 - **Auditoría** de emisión, cobros, cancelaciones y cambios de precio.
-- **Idiomas** español, inglés y portugués (1b).
+- **Idiomas** español, inglés y portugués (1b, hecho): la interfaz completa, con selector en Configuración → Este
+  equipo (por defecto, el idioma del país de la empresa). Falta traducir los mensajes de validación de la lógica.
 
 **Terminado cuando:** una empresa de México factura con IVA 16 %, un `compras` no puede emitir comprobantes y cada
 cobro queda en la auditoría.

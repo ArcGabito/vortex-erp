@@ -18,6 +18,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Textos de la interfaz por idioma (los usa la app con TextCatalog; las pruebas verifican que estén completos). -->
+    <EmbeddedResource Include="Texts\*.json" LogicalName="VortexErp.Core.Texts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="VortexErp.Core.Tests" />
   </ItemGroup>
 

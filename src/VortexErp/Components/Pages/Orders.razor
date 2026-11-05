@@ -1,17 +1,17 @@
 @page "/pedidos"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Pedidos</SectionContent>
+<SectionContent SectionName="page-title">@T("orders.pedidos_2")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Pedidos de venta</h2>
-            <p>Los que creas aquí, los del CRM y los del WMS. El WMS los despacha y aquí se facturan.</p>
+            <h2>@T("orders.pedidos_de_venta")</h2>
+            <p>@T("orders.los_que_creas_aqui_los")</p>
         </div>
         @if (Session.Can(ErpPermissions.CreateOrder))
         {
-            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
+            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />@T("orders.nuevo_pedido")</button>
         }
     </div>
 
@@ -20,8 +20,8 @@
         <div class="card">
             <div class="card-head">
                 <div>
-                    <h3>Cotizaciones aceptadas en el CRM</h3>
-                    <div class="sub">Conviértelas en pedido para que el WMS las prepare.</div>
+                    <h3>@T("orders.cotizaciones_aceptadas_en_el_crm")</h3>
+                    <div class="sub">@T("orders.conviertelas_en_pedido_para_que")</div>
                 </div>
             </div>
             <div class="card-body">
@@ -30,11 +30,11 @@
                     <div class="list-row" @key="q.Id">
                         <Avatar Text="@(q.CustomerName ?? "?")" Size="36" />
                         <div class="two-line" style="flex:1">
-                            <span class="t1">@(q.Number ?? "Cotización") · @(q.CustomerName ?? "Cliente desconocido")</span>
-                            <span class="t2">Aceptada @Fmt.Ago(q.AcceptedAt) · @Fmt.Count(q.LineCount, "línea", "líneas")</span>
+                            <span class="t1">@(q.Number ?? T("orders.cotizacion")) · @(q.CustomerName ?? T("orders.cliente_desconocido"))</span>
+                            <span class="t2">@T("orders.aceptada", Fmt.Ago(q.AcceptedAt), (Fmt.Count(q.LineCount, T("count.linea"), T("count.lineas"))))</span>
                         </div>
                         <strong>@Fmt.Money(q.Total, q.CurrencyCode)</strong>
-                        <button class="btn btn-sm btn-dark" disabled="@(_busy || q.CustomerId is null || !Session.Can(ErpPermissions.ConvertQuote))" @onclick="() => ConvertAsync(q)">Crear pedido</button>
+                        <button class="btn btn-sm btn-dark" disabled="@(_busy || q.CustomerId is null || !Session.Can(ErpPermissions.ConvertQuote))" @onclick="() => ConvertAsync(q)">@T("orders.crear_pedido")</button>
                     </div>
                 }
             </div>
@@ -43,14 +43,14 @@
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("orders.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Número, cliente o RUC" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("orders.numero_cliente_ruc"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field" style="width:auto">
-            <label>Mostrar</label>
+            <label>@T("orders.mostrar")</label>
             <div class="segmented">
                 @foreach (var (value, label) in Tabs)
                 {
@@ -64,21 +64,21 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="clipboard" Title="No hay pedidos" Text="Crea un pedido o espera los que lleguen del CRM." />
+            <EmptyState Icon="clipboard" Title="@(T("orders.no_hay_pedidos"))" Text="@(T("orders.crea_un_pedido_espera_los"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
                     <thead>
-                        <tr><th>Pedido</th><th>Cliente</th><th>Origen</th><th class="num">Total</th><th>Estado</th><th class="actions-col">Acciones</th></tr>
+                        <tr><th>@T("orders.pedido_2")</th><th>@T("orders.cliente")</th><th>@T("orders.origen")</th><th class="num">@T("orders.total")</th><th>@T("orders.estado")</th><th class="actions-col">@T("orders.acciones")</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var o in page.Items)
                         {
                             var (text, tone) = StatusPill.ForOrder(o);
                             <tr @key="o.Id" style="cursor:pointer" @onclick="() => OpenAsync(o)">
-                                <td><div class="two-line"><span class="t1">@o.Number</span><span class="t2">@Fmt.DateTime(o.CreatedAt) · @(o.SiteName ?? "Sin sede")</span></div></td>
+                                <td><div class="two-line"><span class="t1">@o.Number</span><span class="t2">@Fmt.DateTime(o.CreatedAt) · @(o.SiteName ?? T("orders.sin_sede"))</span></div></td>
                                 <td><span style="font-weight:600">@(o.CustomerName ?? "—")</span></td>
                                 <td><span class="muted">@Fmt.Source(o.Source)</span></td>
                                 <td class="num strong">@Fmt.Money(o.Total, o.CurrencyCode)</td>
@@ -91,14 +91,14 @@
                                 </td>
                                 <td class="actions-col" @onclick:stopPropagation>
                                     <KebabMenu>
-                                        <button @onclick="() => OpenAsync(o)"><Icon Name="clipboard" Size="18" />Ver detalle</button>
+                                        <button @onclick="() => OpenAsync(o)"><Icon Name="clipboard" Size="18" />@T("orders.ver_detalle")</button>
                                         @if (o.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
                                         {
-                                            <button @onclick="() => StartInvoice(o)"><Icon Name="receipt" Size="18" />Emitir comprobante</button>
+                                            <button @onclick="() => StartInvoice(o)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
                                         }
                                         @if (o.CanCancel && Session.Can(ErpPermissions.CancelOrder))
                                         {
-                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />Cancelar</button>
+                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />@T("orders.cancelar")</button>
                                         }
                                     </KebabMenu>
                                 </td>
@@ -107,20 +107,20 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="pedidos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("orders.pedidos"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
 
 @if (_new is { } n)
 {
-    <Modal Title="Nuevo pedido" Subtitle="Se publica en la suite: el WMS reserva el stock y lo prepara." Size="lg" Error="@_error" OnClose="() => _new = null">
+    <Modal Title="@(T("orders.nuevo_pedido"))" Subtitle="@(T("orders.se_publica_en_la_suite"))" Size="lg" Error="@_error" OnClose="() => _new = null">
         <ChildContent>
             <div class="form-row">
                 <div class="field">
-                    <label>Cliente</label>
+                    <label>@T("orders.cliente")</label>
                     <select class="select" @bind="n.CustomerId">
-                        <option value="">Elige un cliente</option>
+                        <option value="">@T("orders.elige_un_cliente")</option>
                         @foreach (var c in _customers)
                         {
                             <option value="@c.Id">@c.Label@(c.Detail is null ? "" : $" · {c.Detail}")</option>
@@ -128,9 +128,9 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Despachar desde</label>
+                    <label>@T("orders.despachar_desde")</label>
                     <select class="select" @bind="n.SiteId">
-                        <option value="">Sede por defecto</option>
+                        <option value="">@T("orders.sede_por_defecto")</option>
                         @foreach (var s in _sites)
                         {
                             <option value="@s.Id">@s.Name</option>
@@ -138,14 +138,14 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="Precio" DefaultPrice="i => i.Price" Changed="StateHasChanged" />
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => i.Price" Changed="StateHasChanged" />
             <dl class="totals">
-                <dt class="grand">Total</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
+                <dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
             </dl>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="() => _new = null">Cancelar</button>
-            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.CustomerId is null)" @onclick="CreateAsync">Crear pedido</button>
+            <button class="btn" @onclick="() => _new = null">@T("orders.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.CustomerId is null)" @onclick="CreateAsync">@T("orders.crear_pedido")</button>
         </Footer>
     </Modal>
 }
@@ -153,19 +153,19 @@
 @if (_detail is { } d)
 {
     var (text, tone) = StatusPill.ForOrder(d);
-    <Modal Title="@($"Pedido {d.Number}")" Subtitle="@($"{d.CustomerName} · {Fmt.DateTime(d.CreatedAt)}")" Size="lg" OnClose="() => _detail = null">
+    <Modal Title="@(T("orders.pedido", d.Number))" Subtitle="@($"{d.CustomerName} · {Fmt.DateTime(d.CreatedAt)}")" Size="lg" OnClose="() => _detail = null">
         <ChildContent>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <StatusPill Text="@text" Tone="@tone" />
-                <span class="muted">@Fmt.Source(d.Source) · @(d.SiteName ?? "Sin sede")@(d.UserName is null ? "" : $" · {d.UserName}")</span>
+                <span class="muted">@Fmt.Source(d.Source) · @(d.SiteName ?? T("orders.sin_sede"))@(d.UserName is null ? "" : $" · {d.UserName}")</span>
             </div>
             @if (d.DispatchedAt is { } at)
             {
-                <div class="alert info"><Icon Name="truck" Size="18" /><span>Despachado por el WMS el @Fmt.DateTime(at)@(d.ShipmentNumber is null ? "" : $" ({d.ShipmentNumber})")@(d.Carrier is null ? "" : $" con {d.Carrier}")@(d.TrackingNumber is null ? "" : $", guía {d.TrackingNumber}").</span></div>
+                <div class="alert info"><Icon Name="truck" Size="18" /><span>@T("orders.despachado_por_el_wms_el", Fmt.DateTime(at), (d.ShipmentNumber is null ? "" : $" ({d.ShipmentNumber})"), (d.Carrier is null ? "" : T("orders.con", d.Carrier)), (d.TrackingNumber is null ? "" : T("orders.guia", d.TrackingNumber)))</span></div>
             }
             <div class="table-wrap">
                 <table class="data" style="min-width:480px">
-                    <thead><tr><th>Artículo</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
+                    <thead><tr><th>@T("orders.articulo")</th><th class="num">@T("orders.cant")</th><th class="num">@T("orders.precio")</th><th class="num">@T("orders.importe")</th></tr></thead>
                     <tbody>
                         @foreach (var l in _lines)
                         {
@@ -179,20 +179,20 @@
                     </tbody>
                 </table>
             </div>
-            <dl class="totals"><dt class="grand">Total</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
+            <dl class="totals"><dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
         </ChildContent>
         <Footer>
             @if (d.CanCancel && Session.Can(ErpPermissions.CancelOrder))
             {
-                <button class="btn btn-danger" @onclick="() => CancelAsync(d)"><Icon Name="ban" Size="18" />Cancelar pedido</button>
+                <button class="btn btn-danger" @onclick="() => CancelAsync(d)"><Icon Name="ban" Size="18" />@T("orders.cancelar_pedido")</button>
             }
             @if (d.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
             {
-                <button class="btn btn-dark" @onclick="() => StartInvoice(d)"><Icon Name="receipt" Size="18" />Emitir comprobante</button>
+                <button class="btn btn-dark" @onclick="() => StartInvoice(d)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
             }
             else
             {
-                <button class="btn btn-dark" @onclick="() => _detail = null">Cerrar</button>
+                <button class="btn btn-dark" @onclick="() => _detail = null">@T("orders.cerrar")</button>
             }
         </Footer>
     </Modal>
@@ -200,21 +200,21 @@
 
 @if (_invoicing is { } inv)
 {
-    <Modal Title="@($"Comprobante del pedido {inv.Number}")" Subtitle="@inv.CustomerName" Size="sm" Error="@_error" OnClose="() => _invoicing = null">
+    <Modal Title="@(T("orders.comprobante_del_pedido", inv.Number))" Subtitle="@inv.CustomerName" Size="sm" Error="@_error" OnClose="() => _invoicing = null">
         <ChildContent>
             <div class="segmented">
-                <button class="@(_kind == InvoiceKinds.Invoice ? "on" : "")" @onclick="() => _kind = InvoiceKinds.Invoice">Factura</button>
-                <button class="@(_kind == InvoiceKinds.Receipt ? "on" : "")" @onclick="() => _kind = InvoiceKinds.Receipt">Boleta</button>
+                <button class="@(_kind == InvoiceKinds.Invoice ? "on" : "")" @onclick="() => _kind = InvoiceKinds.Invoice">@T("orders.factura")</button>
+                <button class="@(_kind == InvoiceKinds.Receipt ? "on" : "")" @onclick="() => _kind = InvoiceKinds.Receipt">@T("orders.boleta")</button>
             </div>
             <div class="field">
-                <label>Plazo de pago (días)</label>
+                <label>@T("orders.plazo_de_pago_dias")</label>
                 <input class="control" type="number" min="0" step="1" @bind="_creditDays" />
             </div>
-            <dl class="totals"><dt class="grand">Total</dt><dd class="grand">@Fmt.Money(inv.Total, inv.CurrencyCode)</dd></dl>
+            <dl class="totals"><dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(inv.Total, inv.CurrencyCode)</dd></dl>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="() => _invoicing = null">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="InvoiceAsync">Emitir @Fmt.InvoiceKind(_kind).ToLowerInvariant()</button>
+            <button class="btn" @onclick="() => _invoicing = null">@T("orders.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="InvoiceAsync">@T("orders.emitir", Fmt.InvoiceKind(_kind).ToLowerInvariant())</button>
         </Footer>
     </Modal>
 }
@@ -228,7 +228,7 @@
     }
 
     private static readonly (string Value, string Label)[] Tabs =
-        [("", "Todos"), ("uninvoiced", "Por facturar"), (OrderStatuses.Open, "Abiertos"), (OrderStatuses.Dispatched, "Despachados"), (OrderStatuses.Cancelled, "Cancelados")];
+        [("", T("orders.todos")), ("uninvoiced", T("orders.por_facturar")), (OrderStatuses.Open, T("orders.abiertos")), (OrderStatuses.Dispatched, T("orders.despachados")), (OrderStatuses.Cancelled, T("orders.cancelados"))];
 
     private PagedResult<OrderRow>? _result;
     private IReadOnlyList<QuoteRow> _quotes = [];
@@ -289,7 +289,7 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"Pedido {number} creado.");
+            Toasts.Success(T("orders.pedido_creado", number));
             _new = null;
         }
     }
@@ -301,7 +301,7 @@
         await RunAsync(async () => number = await Erp.Orders.ConvertQuoteAsync(quote.Id, Session.DefaultSiteId));
         _busy = false;
         if (number is not null)
-            Toasts.Success($"Pedido {number} creado desde la cotización.");
+            Toasts.Success(T("orders.pedido_creado_desde_la_cotizacion", number));
     }
 
     private async Task OpenAsync(OrderRow order)
@@ -329,14 +329,14 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"{Fmt.InvoiceKind(_kind)} {number} emitida.");
+            Toasts.Success(T("orders.emitida", Fmt.InvoiceKind(_kind), number));
             _invoicing = null;
         }
     }
 
     private async Task CancelAsync(OrderRow order)
     {
-        await RunAsync(() => Erp.Orders.CancelAsync(order.Id), $"Pedido {order.Number} cancelado.");
+        await RunAsync(() => Erp.Orders.CancelAsync(order.Id), T("orders.pedido_cancelado", order.Number));
         _detail = null;
     }
 

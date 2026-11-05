@@ -9,7 +9,7 @@
                     <p>@Subtitle</p>
                 }
             </div>
-            <button class="btn btn-ghost icon-btn sm" @onclick="OnClose" aria-label="Cerrar"><Icon Name="x" Size="18" /></button>
+            <button class="btn btn-ghost icon-btn sm" @onclick="OnClose" aria-label="@(T("modal.cerrar"))"><Icon Name="x" Size="18" /></button>
         </div>
         <div class="modal-body">
             @if (Error is not null)

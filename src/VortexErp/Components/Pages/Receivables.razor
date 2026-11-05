@@ -1,47 +1,47 @@
 @page "/cobranzas"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Cobranzas</SectionContent>
+<SectionContent SectionName="page-title">@T("receivables.cobranzas")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Cuentas por cobrar</h2>
-            <p>Saldo pendiente por cliente, con lo vencido primero. Cada cobro se comparte con el CRM.</p>
+            <h2>@T("receivables.cuentas_por_cobrar")</h2>
+            <p>@T("receivables.saldo_pendiente_por_cliente_con")</p>
         </div>
-        <a class="btn btn-dark" href="comprobantes"><Icon Name="receipt" Size="18" />Ir a comprobantes</a>
+        <a class="btn btn-dark" href="comprobantes"><Icon Name="receipt" Size="18" />@T("receivables.ir_comprobantes")</a>
     </div>
 
     @if (_receivables.Count > 0)
     {
         <div class="stat-strip boxed">
-            <StatTile Icon="wallet" Label="Por cobrar" Value="@Fmt.MoneyCompact(_receivables.Sum(r => r.Balance), _currency)" Hint="@Fmt.Count(_receivables.Count, "cliente", "clientes")" />
-            <StatTile Icon="alert" Label="Vencido" Value="@Fmt.MoneyCompact(_receivables.Sum(r => r.Overdue), _currency)" Hint="@Fmt.Count(_receivables.Count(r => r.Overdue > 0), "cliente", "clientes")" />
+            <StatTile Icon="wallet" Label="@(T("receivables.por_cobrar"))" Value="@Fmt.MoneyCompact(_receivables.Sum(r => r.Balance), _currency)" Hint="@Fmt.Count(_receivables.Count, T("count.cliente"), T("count.clientes"))" />
+            <StatTile Icon="alert" Label="@(T("receivables.vencido"))" Value="@Fmt.MoneyCompact(_receivables.Sum(r => r.Overdue), _currency)" Hint="@Fmt.Count(_receivables.Count(r => r.Overdue > 0), T("count.cliente"), T("count.clientes"))" />
         </div>
     }
 
     <div class="grid-2">
         <div class="card">
-            <div class="card-head"><h3>Saldos por cliente</h3></div>
+            <div class="card-head"><h3>@T("receivables.saldos_por_cliente")</h3></div>
             <div class="card-body" style="padding-top:0">
                 @if (_receivables.Count == 0 && !Loading)
                 {
-                    <EmptyState Icon="package-check" Title="Todo cobrado" Text="No hay comprobantes con saldo pendiente." />
+                    <EmptyState Icon="package-check" Title="@(T("receivables.todo_cobrado"))" Text="@(T("receivables.no_hay_comprobantes_con_saldo"))" />
                 }
                 else
                 {
                     <div class="table-wrap">
                         <table class="data" style="min-width:520px">
-                            <thead><tr><th>Cliente</th><th class="num">Comprobantes</th><th class="num">Saldo</th><th class="num">Vencido</th><th></th></tr></thead>
+                            <thead><tr><th>@T("receivables.cliente")</th><th class="num">@T("receivables.comprobantes")</th><th class="num">@T("receivables.saldo")</th><th class="num">@T("receivables.vencido")</th><th></th></tr></thead>
                             <tbody>
                                 @foreach (var r in _receivables)
                                 {
                                     <tr @key="r.CustomerId">
-                                        <td><div class="two-line"><span class="t1">@r.CustomerName</span><span class="t2">@(r.OldestDue is { } due ? $"vence desde el {Fmt.Date(due)}" : "")</span></div></td>
+                                        <td><div class="two-line"><span class="t1">@r.CustomerName</span><span class="t2">@(r.OldestDue is { } due ? T("receivables.vence_desde_el", Fmt.Date(due)) : "")</span></div></td>
                                         <td class="num">@r.Invoices</td>
                                         <td class="num strong">@Fmt.Money(r.Balance, _currency)</td>
                                         <td class="num"><span class="@(r.Overdue > 0 ? "qty-neg" : "faint")">@Fmt.Money(r.Overdue, _currency)</span></td>
-                                        <td class="actions-col"><a class="btn btn-sm btn-ghost" href="@($"comprobantes?q={Uri.EscapeDataString(r.CustomerName)}")">Ver</a></td>
+                                        <td class="actions-col"><a class="btn btn-sm btn-ghost" href="@($"comprobantes?q={Uri.EscapeDataString(r.CustomerName)}")">@T("receivables.ver")</a></td>
                                     </tr>
                                 }
                             </tbody>
@@ -54,21 +54,21 @@
         <div class="card">
             <div class="card-head">
                 <div>
-                    <h3>Últimos cobros</h3>
-                    <div class="sub">De todos los equipos del ERP</div>
+                    <h3>@T("receivables.ultimos_cobros")</h3>
+                    <div class="sub">@T("receivables.de_todos_los_equipos_del")</div>
                 </div>
             </div>
             <div class="card-body">
                 @if (_payments.Count == 0)
                 {
-                    <div class="list-row"><span class="muted">Aún no hay cobros registrados.</span></div>
+                    <div class="list-row"><span class="muted">@T("receivables.aun_no_hay_cobros_registrados")</span></div>
                 }
                 @foreach (var p in _payments)
                 {
                     <div class="list-row" @key="p.Id">
                         <Avatar Text="@(p.CustomerName ?? "?")" Size="34" />
                         <div class="two-line">
-                            <span class="t1">@(p.CustomerName ?? "Clientes varios")</span>
+                            <span class="t1">@(p.CustomerName ?? T("receivables.clientes_varios"))</span>
                             <span class="t2">@p.Number · @Fmt.PaymentMethod(p.Method)@(p.InvoiceNumber is null ? "" : $" · {p.InvoiceNumber}") · @Fmt.Ago(p.ReceivedAt)</span>
                         </div>
                         <strong class="end qty-pos">@Fmt.Money(p.Amount, p.CurrencyCode)</strong>

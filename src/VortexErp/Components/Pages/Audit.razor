@@ -1,37 +1,37 @@
 @page "/auditoria"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Auditoría</SectionContent>
+<SectionContent SectionName="page-title">@T("audit.auditoria")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Auditoría</h2>
-            <p>Acciones sensibles registradas en este equipo: emisión de comprobantes, cobros y cancelaciones.</p>
+            <h2>@T("audit.auditoria")</h2>
+            <p>@T("audit.acciones_sensibles_registradas_en_este")</p>
         </div>
     </div>
 
     @if (!Session.Can(ErpPermissions.ViewAudit))
     {
-        <EmptyState Icon="lock" Title="Sin acceso" Text="Tu rol no permite ver la auditoría." />
+        <EmptyState Icon="lock" Title="@(T("audit.sin_acceso"))" Text="@(T("audit.tu_rol_no_permite_ver"))" />
     }
     else if (_result is { } page)
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="list" Title="Aún no hay acciones registradas" />
+            <EmptyState Icon="list" Title="@(T("audit.aun_no_hay_acciones_registradas"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Cuándo</th><th>Usuario</th><th>Acción</th><th>Documento</th><th>Detalle</th></tr></thead>
+                    <thead><tr><th>@T("audit.cuando")</th><th>@T("audit.usuario")</th><th>@T("audit.accion")</th><th>@T("audit.documento")</th><th>@T("audit.detalle")</th></tr></thead>
                     <tbody>
                         @foreach (var e in page.Items)
                         {
                             <tr @key="e.Id">
                                 <td><span class="muted">@Fmt.DateTime(e.At)</span></td>
-                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(e.UserName ?? "—")</span><span class="t2">Equipo @e.Device</span></div></td>
+                                <td><div class="two-line"><span class="t1" style="font-weight:600">@(e.UserName ?? "—")</span><span class="t2">@T("audit.equipo", e.Device)</span></div></td>
                                 <td><StatusPill Text="@Fmt.AuditAction(e.Action)" Tone="@(e.Action is "document.cancelled" or "document.voided" ? "warn" : "neutral")" /></td>
                                 <td>@(e.Reference ?? "—")</td>
                                 <td style="white-space:normal"><span class="muted">@e.Detail</span></td>
@@ -40,7 +40,7 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="acciones" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("audit.acciones"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
