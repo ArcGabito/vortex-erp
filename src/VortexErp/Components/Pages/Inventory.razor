@@ -1,33 +1,33 @@
 @page "/inventario"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Inventario</SectionContent>
+<SectionContent SectionName="page-title">@T("inventory.inventario")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Inventario valorizado</h2>
-            <p>El stock lo lleva el WMS; aquí se valoriza al último costo de compra (o al precio de lista si no hubo compras).</p>
+            <h2>@T("inventory.inventario_valorizado")</h2>
+            <p>@T("inventory.el_stock_lo_lleva_el")</p>
         </div>
     </div>
 
     <div class="stat-strip boxed">
-        <StatTile Icon="wallet" Label="Valor del inventario" Value="@Fmt.MoneyCompact(_value, _currency)" Hint="@(_site is null ? "todas las sedes" : "sede elegida")" />
-        <StatTile Icon="boxes" Label="Registros de stock" Value="@Fmt.Compact(_result?.Total ?? 0)" Hint="artículo × sede" />
+        <StatTile Icon="wallet" Label="@(T("inventory.valor_del_inventario"))" Value="@Fmt.MoneyCompact(_value, _currency)" Hint="@(_site is null ? "todas las sedes" : "sede elegida")" />
+        <StatTile Icon="boxes" Label="@(T("inventory.registros_de_stock"))" Value="@Fmt.Compact(_result?.Total ?? 0)" Hint="@(T("inventory.articulo_sede"))" />
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("inventory.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Nombre, SKU o categoría" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("inventory.nombre_sku_categoria"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field">
-            <label>Sede</label>
+            <label>@T("inventory.sede")</label>
             <select class="select" value="@_site" @onchange="async e => { _site = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; _page = 1; await ReloadAsync(); }">
-                <option value="">Todas</option>
+                <option value="">@T("inventory.todas")</option>
                 @foreach (var s in _sites)
                 {
                     <option value="@s.Id">@s.Name</option>
@@ -40,13 +40,13 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="boxes" Title="Sin stock informado" Text="Cuando el WMS registre recepciones o ajustes, el stock aparecerá aquí." />
+            <EmptyState Icon="boxes" Title="@(T("inventory.sin_stock_informado"))" Text="@(T("inventory.cuando_el_wms_registre_recepciones"))" />
         }
         else
         {
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Artículo</th><th>Sede</th><th class="num">Stock</th><th class="num">Costo unitario</th><th class="num">Valor</th><th class="num">Actualizado</th></tr></thead>
+                    <thead><tr><th>@T("inventory.articulo")</th><th>@T("inventory.sede")</th><th class="num">@T("inventory.stock")</th><th class="num">@T("inventory.costo_unitario")</th><th class="num">@T("inventory.valor")</th><th class="num">@T("inventory.actualizado")</th></tr></thead>
                     <tbody>
                         @foreach (var s in page.Items)
                         {
@@ -54,7 +54,7 @@
                                 <td><div class="two-line"><span class="t1">@s.ItemName</span><span class="t2">#@s.Sku@(s.Category is null ? "" : $" · {s.Category}")</span></div></td>
                                 <td><span class="muted">@s.SiteName</span></td>
                                 <td class="num"><span class="@(s.OnHand < 0 ? "qty-neg" : "strong")">@Fmt.Qty(s.OnHand) @s.Unit</span></td>
-                                <td class="num" title="@(s.CostFromPurchase ? "Último costo de compra" : "Precio de lista (sin compras registradas)")">
+                                <td class="num" title="@(s.CostFromPurchase ? T("inventory.ultimo_costo_de_compra") : T("inventory.precio_de_lista_sin_compras"))">
                                     @Fmt.Money(s.UnitCost, _currency)@(s.CostFromPurchase ? "" : " *")
                                 </td>
                                 <td class="num strong">@Fmt.Money(s.Value, _currency)</td>
@@ -64,8 +64,8 @@
                     </tbody>
                 </table>
             </div>
-            <p class="muted" style="font-size:12px">* Valorizado al precio de lista porque aún no hay compras del artículo.</p>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <p class="muted" style="font-size:12px">@T("inventory.valorizado_al_precio_de_lista")</p>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("inventory.registros"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>

@@ -21,7 +21,7 @@
                     <Avatar Text="@item.Name" Size="32" />
                     <span class="two-line">
                         <span class="t1">@item.Name</span>
-                        <span class="t2">#@item.Sku@(item.Barcode is null ? "" : $" · {item.Barcode}") · @Fmt.Money(item.Price, item.CurrencyCode)@(item.OnHand is { } q ? $" · {Fmt.Qty(q)} en tienda" : "")</span>
+                        <span class="t2">#@item.Sku@(item.Barcode is null ? "" : $" · {item.Barcode}") · @Fmt.Money(item.Price, item.CurrencyCode)@(item.OnHand is { } q ? T("itempicker.en_tienda", Fmt.Qty(q)) : "")</span>
                     </span>
                 </button>
             }
@@ -30,7 +30,7 @@
 </div>
 
 @code {
-    [Parameter] public string Placeholder { get; set; } = "Escanea o busca por SKU, nombre o código de barras";
+    [Parameter] public string Placeholder { get; set; } = T("itempicker.escanea_busca_por_sku_nombre");
     [Parameter] public Guid? SiteId { get; set; }
     [Parameter] public EventCallback<ItemRow> OnSelected { get; set; }
 

@@ -1,7 +1,7 @@
 @inject IJSRuntime JS
 @* Menú de acciones (⋮). Se posiciona fijo en pantalla para que una tabla con desplazamiento no lo recorte. *@
 <div class="menu-anchor">
-    <button @ref="_button" class="btn btn-ghost icon-btn sm" @onclick="ToggleAsync" title="Acciones" aria-label="Acciones">
+    <button @ref="_button" class="btn btn-ghost icon-btn sm" @onclick="ToggleAsync" title="@(T("kebabmenu.acciones"))" aria-label="@(T("kebabmenu.acciones"))">
         <Icon Name="more" Size="18" />
     </button>
     @if (_open)

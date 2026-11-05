@@ -10,46 +10,46 @@
         <aside class="sidebar @(_menuOpen ? "open" : "")">
             <div class="brand"><Logo /></div>
             <nav class="nav" @onclick="() => _menuOpen = false">
-                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />Panel</NavLink>
-                <div class="nav-section">Ventas</div>
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />@T("nav.panel")</NavLink>
+                <div class="nav-section">@T("nav.ventas")</div>
                 <NavLink class="nav-link" href="pedidos">
-                    <Icon Name="clipboard" />Pedidos
+                    <Icon Name="clipboard" />@T("nav.pedidos")
                     @if (_toInvoice > 0)
                     {
-                        <span class="count" title="Pedidos y cotizaciones por atender">@_toInvoice</span>
+                        <span class="count" title="@(T("nav.pedidos_cotizaciones_por_atender"))">@_toInvoice</span>
                     }
                 </NavLink>
-                <NavLink class="nav-link" href="comprobantes"><Icon Name="receipt" />Comprobantes</NavLink>
+                <NavLink class="nav-link" href="comprobantes"><Icon Name="receipt" />@T("nav.comprobantes")</NavLink>
                 <NavLink class="nav-link" href="cobranzas">
-                    <Icon Name="wallet" />Cobranzas
+                    <Icon Name="wallet" />@T("nav.cobranzas")
                     @if (_overdue > 0)
                     {
-                        <span class="count" title="Comprobantes vencidos">@_overdue</span>
+                        <span class="count" title="@(T("nav.comprobantes_vencidos"))">@_overdue</span>
                     }
                 </NavLink>
 
-                <div class="nav-section">Operaciones</div>
-                <NavLink class="nav-link" href="compras"><Icon Name="truck" />Compras</NavLink>
-                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />Inventario</NavLink>
+                <div class="nav-section">@T("nav.operaciones")</div>
+                <NavLink class="nav-link" href="compras"><Icon Name="truck" />@T("nav.compras")</NavLink>
+                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />@T("nav.inventario")</NavLink>
 
-                <div class="nav-section">Catálogo</div>
-                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />Artículos</NavLink>
-                <NavLink class="nav-link" href="socios"><Icon Name="users" />Clientes y proveedores</NavLink>
-                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />Sedes</NavLink>
+                <div class="nav-section">@T("nav.catalogo")</div>
+                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />@T("nav.articulos")</NavLink>
+                <NavLink class="nav-link" href="socios"><Icon Name="users" />@T("nav.clientes_proveedores")</NavLink>
+                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />@T("nav.sedes")</NavLink>
 
-                <div class="nav-section">Sistema</div>
+                <div class="nav-section">@T("nav.sistema")</div>
                 @if (Session.Can(ErpPermissions.ViewAudit))
                 {
-                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />Auditoría</NavLink>
+                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />@T("nav.auditoria")</NavLink>
                 }
-                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
+                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />@T("nav.configuracion")</NavLink>
             </nav>
 
             <div class="promo">
                 <Logo IconOnly Size="64" />
-                <h4 style="margin-top:8px">Libre y de código abierto</h4>
-                <p>Vortex ERP es AGPL-3.0. Hecho en Perú para LATAM y el mundo.</p>
-                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">Contribuir</button>
+                <h4 style="margin-top:8px">@T("nav.libre_de_codigo_abierto")</h4>
+                <p>@T("nav.vortex_erp_es_agpl_3")</p>
+                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">@T("nav.contribuir")</button>
             </div>
         </aside>
 

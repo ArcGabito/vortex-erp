@@ -7,22 +7,22 @@
     [Parameter] public bool Plain { get; set; }
 
     public static (string Text, string Tone) ForOrder(OrderRow o) =>
-        o.Status == OrderStatuses.Cancelled ? ("Cancelado", "neutral")
-        : o.InvoiceId is not null ? ("Facturado", "good")
-        : o.Status == OrderStatuses.Dispatched ? ("Despachado", "info")
-        : ("Abierto", "warn");
+        o.Status == OrderStatuses.Cancelled ? (T("statuspill.cancelado"), "neutral")
+        : o.InvoiceId is not null ? (T("statuspill.facturado"), "good")
+        : o.Status == OrderStatuses.Dispatched ? (T("statuspill.despachado"), "info")
+        : (T("statuspill.abierto"), "warn");
 
     public static (string Text, string Tone) ForInvoice(InvoiceRow i, DateOnly today) =>
-        i.IsPaid ? ("Pagado", "good")
-        : i.IsOverdue(today) ? ("Vencido", "bad")
-        : i.Paid > 0 ? ("Pago parcial", "warn")
-        : ("Por cobrar", "info");
+        i.IsPaid ? (T("statuspill.pagado"), "good")
+        : i.IsOverdue(today) ? (T("statuspill.vencido"), "bad")
+        : i.Paid > 0 ? (T("statuspill.pago_parcial"), "warn")
+        : (T("statuspill.por_cobrar"), "info");
 
     public static (string Text, string Tone) ForPurchase(string status) => status switch
     {
-        PurchaseStatuses.Open => ("Por recibir", "info"),
-        PurchaseStatuses.Partial => ("Recibida en parte", "warn"),
-        PurchaseStatuses.Received => ("Recibida", "good"),
-        _ => ("Cancelada", "neutral"),
+        PurchaseStatuses.Open => (T("statuspill.por_recibir"), "info"),
+        PurchaseStatuses.Partial => (T("statuspill.recibida_en_parte"), "warn"),
+        PurchaseStatuses.Received => (T("statuspill.recibida"), "good"),
+        _ => (T("statuspill.cancelada"), "neutral"),
     };
 }

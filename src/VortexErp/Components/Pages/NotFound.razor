@@ -1,9 +1,9 @@
 @page "/not-found"
 @layout MainLayout
 
-<SectionContent SectionName="page-title">No encontrado</SectionContent>
+<SectionContent SectionName="page-title">@T("notfound.no_encontrado")</SectionContent>
 <div class="page">
-    <EmptyState Icon="alert" Title="Esta pantalla no existe" Text="Revisa la dirección o vuelve al panel.">
-        <a class="btn btn-dark" href="">Ir al panel</a>
+    <EmptyState Icon="alert" Title="@(T("notfound.esta_pantalla_no_existe"))" Text="@(T("notfound.revisa_la_direccion_vuelve_al"))">
+        <a class="btn btn-dark" href="">@T("notfound.ir_al_panel")</a>
     </EmptyState>
 </div>

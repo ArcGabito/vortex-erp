@@ -3,17 +3,17 @@
 @inject NavigationManager Nav
 
 <header class="topbar">
-    <button class="btn btn-ghost icon-btn menu-btn" @onclick="OnMenu" aria-label="Menú"><Icon Name="menu" /></button>
+    <button class="btn btn-ghost icon-btn menu-btn" @onclick="OnMenu" aria-label="@(T("topbar.menu"))"><Icon Name="menu" /></button>
     <div class="page-title"><SectionOutlet SectionName="page-title" /></div>
 
     <form class="top-search" @onsubmit="Search" role="search">
         <Icon Name="search" Size="18" />
-        <input placeholder="Buscar comprobante, cliente o RUC…" @bind="_query" aria-label="Buscar comprobantes" />
+        <input placeholder="@(T("topbar.buscar_comprobante_cliente_ruc"))" @bind="_query" aria-label="@(T("topbar.buscar_comprobantes"))" />
     </form>
 
     <div class="spacer"></div>
 
-    <button class="sync-chip @ChipClass" @onclick="Session.SyncNow" title="Sincronizar ahora">
+    <button class="sync-chip @ChipClass" @onclick="Session.SyncNow" title="@(T("topbar.sincronizar_ahora"))">
         @if (Session.Sync.IsSyncing)
         {
             <span class="spinner sm"></span>
@@ -26,7 +26,7 @@
     </button>
 
     <div class="menu-anchor">
-        <button class="btn icon-btn round bell" @onclick="() => _panel = _panel == Panel.Alerts ? Panel.None : Panel.Alerts" aria-label="Notificaciones">
+        <button class="btn icon-btn round bell" @onclick="() => _panel = _panel == Panel.Alerts ? Panel.None : Panel.Alerts" aria-label="@(T("topbar.notificaciones"))">
             <Icon Name="bell" />
             @if (HasAlerts)
             {
@@ -37,19 +37,19 @@
         {
             <div class="menu-backdrop" @onclick="() => _panel = Panel.None"></div>
             <div class="popover">
-                <h4 style="font-size:15px;margin-bottom:6px">Sincronización con el hub</h4>
+                <h4 style="font-size:15px;margin-bottom:6px">@T("topbar.sincronizacion_con_el_hub")</h4>
                 <div class="list-row">
                     <span class="pill @ConnectionTone">@ConnectionText</span>
-                    <span class="end muted">@(Session.Sync.LastSyncAt is { } at ? $"Última: {Fmt.Ago(at)}" : "Aún sin sincronizar")</span>
+                    <span class="end muted">@(Session.Sync.LastSyncAt is { } at ? T("topbar.ultima", Fmt.Ago(at)) : T("topbar.aun_sin_sincronizar"))</span>
                 </div>
                 <div class="list-row">
                     <Icon Name="sync" Size="18" Class="faint" />
-                    <span>Operaciones por subir</span>
+                    <span>@T("topbar.operaciones_por_subir")</span>
                     <strong class="end">@Session.Sync.Pending</strong>
                 </div>
                 <div class="list-row">
                     <Icon Name="alert" Size="18" Class="faint" />
-                    <span>Rechazadas por el hub</span>
+                    <span>@T("topbar.rechazadas_por_el_hub")</span>
                     <strong class="end @(Session.Sync.Failed > 0 ? "qty-neg" : "")">@Session.Sync.Failed</strong>
                 </div>
                 @if (Session.Sync.LastError is { } error)
@@ -58,18 +58,18 @@
                 }
                 @if (Session.Connection == ConnectionState.Offline && Session.OfflineValidUntil is { } until)
                 {
-                    <div class="alert warn" style="margin-top:10px">Trabajando sin conexión. Todo se guarda en este equipo y se sube al reconectar (acceso sin conexión hasta el @Fmt.DateTime(until)).</div>
+                    <div class="alert warn" style="margin-top:10px">@T("topbar.trabajando_sin_conexion_todo_se", Fmt.DateTime(until))</div>
                 }
                 <div style="display:flex;gap:8px;margin-top:14px">
-                    <button class="btn btn-dark btn-sm" @onclick="SyncNow"><Icon Name="sync" Size="16" />Sincronizar ahora</button>
-                    <button class="btn btn-sm" @onclick="GoToSettings">Ver detalle</button>
+                    <button class="btn btn-dark btn-sm" @onclick="SyncNow"><Icon Name="sync" Size="16" />@T("topbar.sincronizar_ahora")</button>
+                    <button class="btn btn-sm" @onclick="GoToSettings">@T("topbar.ver_detalle")</button>
                 </div>
             </div>
         }
     </div>
 
     <div class="menu-anchor">
-        <button class="btn btn-ghost" style="padding:0;height:auto;border-radius:50%" @onclick="() => _panel = _panel == Panel.User ? Panel.None : Panel.User" aria-label="Cuenta">
+        <button class="btn btn-ghost" style="padding:0;height:auto;border-radius:50%" @onclick="() => _panel = _panel == Panel.User ? Panel.None : Panel.User" aria-label="@(T("topbar.cuenta"))">
             <Avatar Text="@Session.UserName" Size="44" Class="user" />
         </button>
         @if (_panel == Panel.User)
@@ -82,8 +82,8 @@
                     <div class="faint" style="font-size:12px;margin-top:4px">@Session.Session?.Access.OrganizationName@(Session.Session?.Access.Role is { } role ? $" · {role}" : "")</div>
                 </div>
                 <hr />
-                <a href="configuracion"><Icon Name="settings" Size="18" />Configuración</a>
-                <button class="danger" @onclick="SignOutAsync"><Icon Name="logout" Size="18" />Cerrar sesión</button>
+                <a href="configuracion"><Icon Name="settings" Size="18" />@T("topbar.configuracion")</a>
+                <button class="danger" @onclick="SignOutAsync"><Icon Name="logout" Size="18" />@T("topbar.cerrar_sesion")</button>
             </div>
         }
     </div>
@@ -114,24 +114,24 @@
         {
             var s = Session.Sync;
             if (s.IsSyncing)
-                return "Sincronizando…";
-            var pending = s.Pending > 0 ? $" · {s.Pending} por subir" : "";
+                return T("topbar.sincronizando");
+            var pending = s.Pending > 0 ? T("topbar.por_subir", s.Pending) : "";
             return Session.Connection switch
             {
-                ConnectionState.Online => s.Pending > 0 ? $"En línea{pending}" : s.LastSyncAt is { } at ? $"Sincronizado {Fmt.Ago(at)}" : "En línea",
-                ConnectionState.Offline => $"Sin conexión{pending}",
-                ConnectionState.OfflineExpired => "Conéctate para seguir",
-                _ => "Conectando…",
+                ConnectionState.Online => s.Pending > 0 ? T("topbar.en_linea_pendientes", pending) : s.LastSyncAt is { } at ? T("topbar.sincronizado", Fmt.Ago(at)) : T("topbar.en_linea"),
+                ConnectionState.Offline => T("topbar.sin_conexion", pending),
+                ConnectionState.OfflineExpired => T("topbar.conectate_para_seguir"),
+                _ => T("topbar.conectando"),
             };
         }
     }
 
     private string ConnectionText => Session.Connection switch
     {
-        ConnectionState.Online => "En línea",
-        ConnectionState.Offline => "Sin conexión",
-        ConnectionState.OfflineExpired => "Periodo sin conexión agotado",
-        _ => "Conectando",
+        ConnectionState.Online => T("topbar.en_linea"),
+        ConnectionState.Offline => T("topbar.sin_conexion_2"),
+        ConnectionState.OfflineExpired => T("topbar.periodo_sin_conexion_agotado"),
+        _ => T("topbar.conectando_2"),
     };
 
     private string ConnectionTone => Session.Connection switch

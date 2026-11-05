@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using VortexErp.Core.Domain;
 
+using static VortexErp.Services.Txt;
+
 namespace VortexErp.Services;
 
 public enum ToastKind
@@ -87,7 +89,7 @@ public static class Fmt
     public static string Compact(decimal value) => Math.Abs(value) switch
     {
         >= 1_000_000 => (value / 1_000_000).ToString("0.#", Culture) + " M",
-        >= 10_000 => (value / 1_000).ToString("0.#", Culture) + " mil",
+        >= 10_000 => (value / 1_000).ToString("0.#", Culture) + T("fmt.mil"),
         _ => Qty(Math.Round(value, 2)),
     };
 
@@ -109,9 +111,9 @@ public static class Fmt
     public static string Ago(DateTimeOffset value)
     {
         var span = DateTimeOffset.Now - value;
-        return span.TotalSeconds < 60 ? "hace un momento"
-            : span.TotalMinutes < 60 ? $"hace {(int)span.TotalMinutes} min"
-            : span.TotalHours < 24 ? $"hace {(int)span.TotalHours} h"
+        return span.TotalSeconds < 60 ? T("fmt.hace_un_momento")
+            : span.TotalMinutes < 60 ? T("fmt.hace_min", (int)span.TotalMinutes)
+            : span.TotalHours < 24 ? T("fmt.hace", (int)span.TotalHours)
             : Date(value);
     }
 
@@ -128,22 +130,22 @@ public static class Fmt
 
     public static string PaymentMethod(string method) => method switch
     {
-        PaymentMethods.Cash => "Efectivo",
-        PaymentMethods.Card => "Tarjeta",
-        PaymentMethods.Transfer => "Transferencia",
-        PaymentMethods.Wallet => "Yape / Plin",
-        PaymentMethods.Check => "Cheque",
-        "credit" => "Crédito",
+        PaymentMethods.Cash => T("fmt.efectivo"),
+        PaymentMethods.Card => T("fmt.tarjeta"),
+        PaymentMethods.Transfer => T("fmt.transferencia"),
+        PaymentMethods.Wallet => T("fmt.yape_plin"),
+        PaymentMethods.Check => T("fmt.cheque"),
+        "credit" => T("fmt.credito"),
         _ => method,
     };
 
-    public static string InvoiceKind(string kind) => kind == InvoiceKinds.Invoice ? "Factura" : "Boleta";
+    public static string InvoiceKind(string kind) => kind == InvoiceKinds.Invoice ? T("fmt.factura") : T("fmt.boleta");
 
     public static string Source(string source) => source switch
     {
         "ERP" => "ERP",
-        "CRM" => "Desde el CRM",
-        "WMS" => "Desde el WMS",
+        "CRM" => T("fmt.desde_el_crm"),
+        "WMS" => T("fmt.desde_el_wms"),
         _ => source,
     };
 
@@ -154,30 +156,30 @@ public static class Fmt
 
     public static string TaxCategory(string category) => category switch
     {
-        VortexApi.Suite.Taxes.TaxCategories.Standard => "Tasa general",
-        VortexApi.Suite.Taxes.TaxCategories.Reduced => "Tasa reducida",
-        VortexApi.Suite.Taxes.TaxCategories.SuperReduced => "Tasa superreducida",
-        VortexApi.Suite.Taxes.TaxCategories.Increased => "Tasa incrementada",
-        VortexApi.Suite.Taxes.TaxCategories.Zero => "Tasa cero (exportación)",
-        VortexApi.Suite.Taxes.TaxCategories.Exempt => "Exonerado o exento",
-        _ => "Inafecto o no sujeto",
+        VortexApi.Suite.Taxes.TaxCategories.Standard => T("fmt.tasa_general"),
+        VortexApi.Suite.Taxes.TaxCategories.Reduced => T("fmt.tasa_reducida"),
+        VortexApi.Suite.Taxes.TaxCategories.SuperReduced => T("fmt.tasa_superreducida"),
+        VortexApi.Suite.Taxes.TaxCategories.Increased => T("fmt.tasa_incrementada"),
+        VortexApi.Suite.Taxes.TaxCategories.Zero => T("fmt.tasa_cero_exportacion"),
+        VortexApi.Suite.Taxes.TaxCategories.Exempt => T("fmt.exonerado_exento"),
+        _ => T("fmt.inafecto_no_sujeto"),
     };
 
     public static string AuditAction(string action) => action switch
     {
-        "document.issued" => "Emisión",
-        "payment.registered" => "Cobro",
-        "document.cancelled" => "Cancelación",
-        "document.voided" => "Anulación",
-        "price.override" => "Cambio de precio",
+        "document.issued" => T("fmt.emision"),
+        "payment.registered" => T("fmt.cobro"),
+        "document.cancelled" => T("fmt.cancelacion"),
+        "document.voided" => T("fmt.anulacion"),
+        "price.override" => T("fmt.cambio_de_precio"),
         _ => action,
     };
 
     public static string SiteKind(string kind) => kind switch
     {
-        "Warehouse" => "Almacén",
-        "Store" => "Tienda",
-        "Office" => "Oficina",
-        _ => "Otro",
+        "Warehouse" => T("fmt.almacen"),
+        "Store" => T("fmt.tienda"),
+        "Office" => T("fmt.oficina"),
+        _ => T("fmt.otro"),
     };
 }

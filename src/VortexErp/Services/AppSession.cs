@@ -6,6 +6,8 @@ using VortexErp.Core;
 using VortexErp.Core.Domain;
 using VortexErp.Core.Sync;
 
+using static VortexErp.Services.Txt;
+
 namespace VortexErp.Services;
 
 public enum ConnectionState
@@ -102,6 +104,8 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
             if (Initialized)
                 return;
             await settings.LoadAsync();
+            if (LanguagePreference is { } language)
+                Fmt.SetRegion(language, null, null);
             BuildClient();
             if (await _sessions!.GetSessionAsync() is { } session)
                 await StartAsync(session);
@@ -122,9 +126,9 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
     public async Task<string?> LoginAsync(string email, string password, string hubUrl, string productKey)
     {
         if (!HubSettings.TryNormalize(hubUrl, out var url))
-            return "La dirección del servidor no es válida (ej. https://hub.miempresa.pe).";
+            return T("session.la_direccion_del_servidor_no");
         if (string.IsNullOrWhiteSpace(productKey))
-            return "Falta la clave de sistema del ERP.";
+            return T("session.falta_la_clave_de_sistema");
 
         await _gate.WaitAsync();
         try
@@ -143,7 +147,7 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            return $"No se pudo conectar con el hub en {url}. Revisa la dirección y tu conexión.";
+            return T("session.no_se_pudo_conectar_con", url);
         }
         finally
         {
@@ -357,13 +361,34 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
         }
     }
 
-    /// <summary>Formatos de fecha, número y moneda según el país de la empresa (el idioma llega en la fase de idiomas).</summary>
+    private const string LanguageKey = "ui.language";
+
+    /// <summary>Idioma elegido en este equipo (es, en, pt), o null para usar el del país de la empresa.</summary>
+    public string? LanguagePreference =>
+        Preferences.Default.Get<string?>(LanguageKey, null) is { Length: > 0 } l ? VortexApi.Suite.Regional.Languages.Normalize(l) : null;
+
+    /// <summary>Cambia el idioma de la interfaz en este equipo (null = el del país de la empresa).</summary>
+    public async Task SetLanguageAsync(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+            Preferences.Default.Remove(LanguageKey);
+        else
+            Preferences.Default.Set(LanguageKey, VortexApi.Suite.Regional.Languages.Normalize(language));
+        if (Workspace is null)
+            Fmt.SetRegion(LanguagePreference ?? VortexApi.Suite.Regional.Languages.Spanish, null, null);
+        else
+            await ApplyRegionAsync();
+        Changed?.Invoke();
+        DataChanged?.Invoke();
+    }
+
+    /// <summary>Idioma (el elegido en este equipo o el del país) y formatos de fecha, número y moneda de la empresa.</summary>
     private async Task ApplyRegionAsync()
     {
         try
         {
             if (Workspace is not null && await Workspace.Master.GetCompanyAsync() is { } company)
-                Fmt.SetRegion(Fmt.Language, company.CountryCode, company.TimeZone);
+                Fmt.SetRegion(LanguagePreference ?? VortexApi.Suite.Regional.Languages.DefaultFor(company.CountryCode), company.CountryCode, company.TimeZone);
         }
         catch (Exception ex)
         {

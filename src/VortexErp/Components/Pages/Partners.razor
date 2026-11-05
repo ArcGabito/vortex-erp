@@ -1,26 +1,26 @@
 @page "/socios"
 @inherits ErpPage
 
-<SectionContent SectionName="page-title">Clientes y proveedores</SectionContent>
+<SectionContent SectionName="page-title">@T("partners.clientes_proveedores")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Clientes y proveedores</h2>
-            <p>Un solo directorio para la suite: el CRM, el POS y el WMS ven los mismos registros que el ERP.</p>
+            <h2>@T("partners.clientes_proveedores")</h2>
+            <p>@T("partners.un_solo_directorio_para_la")</p>
         </div>
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("partners.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Nombre o RUC/DNI" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("partners.nombre_ruc_dni"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field" style="width:auto">
-            <label>Mostrar</label>
+            <label>@T("partners.mostrar")</label>
             <div class="segmented">
                 @foreach (var (value, label) in Tabs)
                 {
@@ -31,7 +31,7 @@
         <div class="actions">
             @if (Session.Can(ErpPermissions.CreateParty))
             {
-                <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nuevo registro</button>
+                <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />@T("partners.nuevo_registro")</button>
             }
         </div>
     </div>
@@ -40,7 +40,7 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="users" Title="No hay registros" Text="Los clientes y proveedores llegan desde el hub (CRM, POS, WMS) o puedes crearlos aquí." />
+            <EmptyState Icon="users" Title="@(T("partners.no_hay_registros"))" Text="@(T("partners.los_clientes_proveedores_llegan_desde"))" />
         }
         else
         {
@@ -48,12 +48,12 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th>Nombre</th>
-                            <th>Documento</th>
-                            <th>Contacto</th>
-                            <th>Ciudad</th>
-                            <th>Rol</th>
-                            <th>Estado</th>
+                            <th>@T("partners.nombre")</th>
+                            <th>@T("partners.documento")</th>
+                            <th>@T("partners.contacto")</th>
+                            <th>@T("partners.ciudad")</th>
+                            <th>@T("partners.rol")</th>
+                            <th>@T("partners.estado")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -65,7 +65,7 @@
                                         <Avatar Text="@p.Name" Size="34" />
                                         <div class="two-line">
                                             <span class="t1">@p.Name</span>
-                                            <span class="t2">@(p.TradeName ?? (p.Kind == "Person" ? "Persona" : "Empresa"))</span>
+                                            <span class="t2">@(p.TradeName ?? (p.Kind == "Person" ? T("partners.persona") : T("partners.empresa")))</span>
                                         </div>
                                     </div>
                                 </td>
@@ -76,7 +76,7 @@
                                     }
                                     else
                                     {
-                                        <span class="faint">Sin documento</span>
+                                        <span class="faint">@T("partners.sin_documento")</span>
                                     }
                                 </td>
                                 <td>
@@ -90,20 +90,20 @@
                                     <div style="display:flex;gap:6px;flex-wrap:wrap">
                                         @if (p.IsCustomer)
                                         {
-                                            <StatusPill Text="Cliente" Tone="info" Plain />
+                                            <StatusPill Text="@(T("partners.cliente"))" Tone="info" Plain />
                                         }
                                         @if (p.IsSupplier)
                                         {
-                                            <StatusPill Text="Proveedor" Tone="accent" Plain />
+                                            <StatusPill Text="@(T("partners.proveedor"))" Tone="accent" Plain />
                                         }
                                     </div>
                                 </td>
                                 <td>
                                     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                                        <StatusPill Text="@(p.IsActive ? "Activo" : "Inactivo")" Tone="@(p.IsActive ? "good" : "neutral")" />
+                                        <StatusPill Text="@(p.IsActive ? T("partners.activo") : T("partners.inactivo"))" Tone="@(p.IsActive ? "good" : "neutral")" />
                                         @if (p.Pending)
                                         {
-                                            <span class="tag" title="Guardado en este equipo; se enviará al hub al sincronizar">POR ENVIAR</span>
+                                            <span class="tag" title="@(T("partners.guardado_en_este_equipo_se"))">@T("partners.por_enviar")</span>
                                         }
                                     </div>
                                 </td>
@@ -112,62 +112,62 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("partners.registros"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
 
 @if (_form is { } f)
 {
-    <Modal Title="Nuevo cliente o proveedor" Subtitle="Se registra en el hub y lo verán el CRM, el POS y el WMS." Error="@_error" OnClose="Close">
+    <Modal Title="@(T("partners.nuevo_cliente_proveedor"))" Subtitle="@(T("partners.se_registra_en_el_hub"))" Error="@_error" OnClose="Close">
         <ChildContent>
             <div class="segmented">
-                <button class="@(f.Kind == "Company" ? "on" : "")" @onclick="@(() => SetKind(f, "Company"))">Empresa</button>
-                <button class="@(f.Kind == "Person" ? "on" : "")" @onclick="@(() => SetKind(f, "Person"))">Persona</button>
+                <button class="@(f.Kind == "Company" ? "on" : "")" @onclick="@(() => SetKind(f, "Company"))">@T("partners.empresa")</button>
+                <button class="@(f.Kind == "Person" ? "on" : "")" @onclick="@(() => SetKind(f, "Person"))">@T("partners.persona")</button>
             </div>
             <div class="field">
-                <label>@(f.Kind == "Company" ? "Razón social" : "Nombre completo")</label>
+                <label>@(f.Kind == "Company" ? T("partners.razon_social") : T("partners.nombre_completo"))</label>
                 <input class="control" @bind="f.Name" />
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Documento</label>
+                    <label>@T("partners.documento")</label>
                     <select class="select" @bind="f.DocumentType">
-                        <option value="">Sin documento</option>
-                        <option value="RUC">RUC</option>
-                        <option value="DNI">DNI</option>
-                        <option value="CE">Carné de extranjería</option>
-                        <option value="PAS">Pasaporte</option>
+                        <option value="">@T("partners.sin_documento")</option>
+                        <option value="RUC">@T("partners.ruc")</option>
+                        <option value="DNI">@T("partners.dni")</option>
+                        <option value="CE">@T("partners.carne_de_extranjeria")</option>
+                        <option value="PAS">@T("partners.pasaporte")</option>
                     </select>
                 </div>
                 <div class="field">
-                    <label>Número</label>
+                    <label>@T("partners.numero")</label>
                     <input class="control" disabled="@(f.DocumentType == "")" inputmode="numeric"
-                           placeholder="@(f.DocumentType switch { "RUC" => "11 dígitos", "DNI" => "8 dígitos", _ => "" })" @bind="f.DocumentNumber" />
+                           placeholder="@(f.DocumentType switch { "RUC" => T("partners.11_digitos"), "DNI" => T("partners.8_digitos"), _ => "" })" @bind="f.DocumentNumber" />
                 </div>
             </div>
             <div class="form-row three">
                 <div class="field">
-                    <label>Correo</label>
+                    <label>@T("partners.correo")</label>
                     <input class="control" type="email" @bind="f.Email" />
                 </div>
                 <div class="field">
-                    <label>Teléfono</label>
+                    <label>@T("partners.telefono")</label>
                     <input class="control" type="tel" @bind="f.Phone" />
                 </div>
                 <div class="field">
-                    <label>Ciudad</label>
+                    <label>@T("partners.ciudad")</label>
                     <input class="control" @bind="f.City" />
                 </div>
             </div>
             <div style="display:flex;gap:22px;flex-wrap:wrap">
-                <label class="check"><input type="checkbox" @bind="f.IsCustomer" />Es cliente</label>
-                <label class="check"><input type="checkbox" @bind="f.IsSupplier" />Es proveedor</label>
+                <label class="check"><input type="checkbox" @bind="f.IsCustomer" />@T("partners.es_cliente")</label>
+                <label class="check"><input type="checkbox" @bind="f.IsSupplier" />@T("partners.es_proveedor")</label>
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="Close">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">Guardar</button>
+            <button class="btn" @onclick="Close">@T("partners.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">@T("partners.guardar")</button>
         </Footer>
     </Modal>
 }
@@ -186,7 +186,7 @@
         public bool IsSupplier { get; set; }
     }
 
-    private static readonly (string Value, string Label)[] Tabs = [("", "Todos"), ("customers", "Clientes"), ("suppliers", "Proveedores")];
+    private static (string Value, string Label)[] Tabs => [("", T("partners.todos")), ("customers", T("partners.clientes")), ("suppliers", T("partners.proveedores"))];
 
     private const int PageSize = 12;
     private PagedResult<PartyRow>? _result;
@@ -251,7 +251,7 @@
         var draft = new PartyDraft(f.Name, f.Kind, f.IsCustomer, f.IsSupplier, docType, docType is null ? null : f.DocumentNumber?.Trim(),
             f.Email, f.Phone, f.City);
         _busy = true;
-        _error = await TryAsync(() => Erp.Master.CreatePartyAsync(draft), $"{f.Name.Trim()} registrado.");
+        _error = await TryAsync(() => Erp.Master.CreatePartyAsync(draft), T("partners.registrado", f.Name.Trim()));
         _busy = false;
         if (_error is null)
             Close();

@@ -3,17 +3,17 @@
     <span class="muted">
         @if (Total == 0)
         {
-            @($"Sin {Noun}")
+            @(T("pager.sin", Noun))
         }
         else
         {
-            @($"Mostrando {From} a {To} de {Fmt.Qty(Total)} {Noun}")
+            @(T("pager.mostrando_de", From, To, Fmt.Qty(Total), Noun))
         }
     </span>
     @if (Pages > 1)
     {
         <div class="pager">
-            <button class="arrow" disabled="@(Page <= 1)" @onclick="() => Go(Page - 1)" aria-label="Anterior"><Icon Name="chevron-left" Size="18" /></button>
+            <button class="arrow" disabled="@(Page <= 1)" @onclick="() => Go(Page - 1)" aria-label="@(T("pager.anterior"))"><Icon Name="chevron-left" Size="18" /></button>
             @foreach (var p in Window())
             {
                 if (p == 0)
@@ -26,7 +26,7 @@
                     <button class="@(number == Page ? "on" : "")" @onclick="() => Go(number)">@number</button>
                 }
             }
-            <button class="arrow" disabled="@(Page >= Pages)" @onclick="() => Go(Page + 1)" aria-label="Siguiente"><Icon Name="chevron-right" Size="18" /></button>
+            <button class="arrow" disabled="@(Page >= Pages)" @onclick="() => Go(Page + 1)" aria-label="@(T("pager.siguiente"))"><Icon Name="chevron-right" Size="18" /></button>
         </div>
     }
 </div>

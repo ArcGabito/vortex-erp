@@ -9,7 +9,7 @@
     </aside>
 
     <main class="login-main">
-        <form class="login-form" @onsubmit="SubmitAsync" aria-label="Iniciar sesión">
+        <form class="login-form" @onsubmit="SubmitAsync" aria-label="@(T("login.iniciar_sesion"))">
             <Logo Size="36" />
 
             @if ((_error ?? Session.SignedOutReason) is { } message)
@@ -18,14 +18,14 @@
             }
 
             <div class="field">
-                <label for="email">Correo</label>
+                <label for="email">@T("login.correo")</label>
                 <input id="email" class="control" type="email" autocomplete="username" @bind="_email" />
             </div>
             <div class="field">
-                <label for="password">Contraseña</label>
+                <label for="password">@T("login.contrasena")</label>
                 <div class="password">
                     <input id="password" class="control" type="@(_showPassword ? "text" : "password")" autocomplete="current-password" @bind="_password" />
-                    <button type="button" @onclick="() => _showPassword = !_showPassword" aria-label="@(_showPassword ? "Ocultar contraseña" : "Mostrar contraseña")">
+                    <button type="button" @onclick="() => _showPassword = !_showPassword" aria-label="@(_showPassword ? T("login.ocultar_contrasena") : T("login.mostrar_contrasena"))">
                         <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="18" />
                     </button>
                 </div>
@@ -36,25 +36,25 @@
                 {
                     <span class="spinner sm" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span>
                 }
-                Ingresar
+                @T("login.ingresar")
             </button>
 
             @* La dirección del hub es de cada empresa: se puede cambiar aquí antes de ingresar. *@
             <div class="server">
-                <span>Servidor <b>@Host</b> <button type="button" class="link-btn" @onclick="() => _showServer = !_showServer">@(_showServer ? "Listo" : "Cambiar")</button></span>
+                <span>@T("login.servidor") <b>@Host</b> <button type="button" class="link-btn" @onclick="() => _showServer = !_showServer">@(_showServer ? T("login.listo") : T("login.cambiar"))</button></span>
                 @if (IsDebug)
                 {
-                    <button type="button" class="link-btn" @onclick="FillDemo">Usar cuenta demo</button>
+                    <button type="button" class="link-btn" @onclick="FillDemo">@T("login.usar_cuenta_demo")</button>
                 }
             </div>
             @if (_showServer)
             {
                 <div class="field">
-                    <label for="hub">Dirección del hub</label>
-                    <input id="hub" class="control" placeholder="https://hub.miempresa.pe" @bind="_hubUrl" />
+                    <label for="hub">@T("login.direccion_del_hub")</label>
+                    <input id="hub" class="control" placeholder="@(T("login.https_hub_miempresa_pe"))" @bind="_hubUrl" />
                 </div>
                 <div class="field">
-                    <label for="key">Clave de sistema del ERP</label>
+                    <label for="key">@T("login.clave_de_sistema_del_erp")</label>
                     <input id="key" class="control" type="password" @bind="_productKey" />
                 </div>
             }
@@ -95,7 +95,7 @@
     {
         if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrEmpty(_password))
         {
-            _error = "Ingresa tu correo y contraseña.";
+            _error = T("login.ingresa_tu_correo_contrasena");
             return;
         }
         _busy = true;
