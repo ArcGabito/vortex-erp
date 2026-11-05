@@ -9,8 +9,7 @@ namespace VortexErp.Services;
 /// </summary>
 public static class Txt
 {
-    public static readonly TextCatalog Catalog =
-        new TextCatalog().AddResources(typeof(VortexErp.Core.ErpWorkspace).Assembly, "VortexErp.Core.Texts");
+    public static TextCatalog Catalog => VortexErp.Core.Texts.CoreText.Catalog;
 
     public static string T(string key, params object?[] args) => Catalog.Get(Fmt.Language, key, args);
 }

@@ -77,6 +77,7 @@ public static class Fmt
     public static void SetRegion(string language, string? countryCode, string? timeZone)
     {
         Language = VortexApi.Suite.Regional.Languages.Normalize(language);
+        VortexErp.Core.Texts.CoreText.Language = Language;
         Culture = VortexApi.Suite.Regional.RegionalSettings.CultureFor(Language, countryCode);
         TimeZone = timeZone;
         CultureInfo.DefaultThreadCurrentCulture = Culture;

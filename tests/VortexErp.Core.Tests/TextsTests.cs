@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using VortexApi.Suite.Regional;
 using VortexApi.Suite.Text;
+using VortexErp.Core.Domain;
+using VortexErp.Core.Texts;
 
 namespace VortexErp.Core.Tests;
 
@@ -36,8 +38,8 @@ public sealed partial class TextsTests
     public void Cada_clave_usada_en_la_interfaz_existe()
     {
         var catalog = new TextCatalog().AddResources(Core, "VortexErp.Core.Texts");
-        var app = Path.Combine(RepoRoot(), "src", "VortexErp");
-        var used = Directory.EnumerateFiles(app, "*.*", SearchOption.AllDirectories)
+        var used = new[] { "VortexErp", "VortexErp.Core" }
+            .SelectMany(project => Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src", project), "*.*", SearchOption.AllDirectories))
             .Where(f => (f.EndsWith(".razor") || f.EndsWith(".cs")) && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .SelectMany(f => KeyUse().Matches(File.ReadAllText(f)).Select(m => m.Groups[1].Value))
             .Where(k => !k.EndsWith('.'))
@@ -59,6 +61,23 @@ public sealed partial class TextsTests
         Assert.Equal(Languages.Portuguese, Languages.DefaultFor("BR"));
         Assert.Equal(Languages.English, Languages.DefaultFor("US"));
         Assert.Equal(Languages.Spanish, Languages.DefaultFor("PE"));
+    }
+
+    [Fact]
+    public async Task Los_mensajes_de_la_logica_salen_en_el_idioma_elegido()
+    {
+        var t = new TestWorkspace(role: ErpPermissions.Purchasing);
+        await t.InitializeAsync();
+        try
+        {
+            using var _ = CoreText.Use(Languages.Portuguese);
+            var ex = await Assert.ThrowsAsync<ErpValidationException>(() => t.Erp.Orders.CreateAsync(t.Customer, null, [new DocumentLine(t.Coffee, 1)], "PEN"));
+            Assert.StartsWith("Sua função (compras) não permite", ex.Message);
+        }
+        finally
+        {
+            await t.DisposeAsync();
+        }
     }
 
     private static string Markers(string text) =>

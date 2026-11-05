@@ -5,6 +5,8 @@ using VortexErp.Core.Data;
 using VortexErp.Core.Domain;
 using VortexErp.Core.Sync;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Services;
 
 /// <summary>
@@ -109,18 +111,18 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
     {
         RequirePermission(ErpPermissions.EditCatalog);
         var sku = draft.Sku.Trim().ToUpperInvariant();
-        Require(sku.Length > 0, "El SKU es obligatorio.");
-        Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
-        Require(!string.IsNullOrWhiteSpace(draft.Unit), "La unidad es obligatoria.");
-        Require(draft.Price >= 0, "El precio no puede ser negativo.");
-        Require(draft.CurrencyCode.Trim().Length == 3, "La moneda debe ser un código ISO de 3 letras (PEN, USD…).");
+        Require(sku.Length > 0, T("error.el_sku_es_obligatorio"));
+        Require(!string.IsNullOrWhiteSpace(draft.Name), T("error.el_nombre_es_obligatorio"));
+        Require(!string.IsNullOrWhiteSpace(draft.Unit), T("error.la_unidad_es_obligatoria"));
+        Require(draft.Price >= 0, T("error.el_precio_no_puede_ser"));
+        Require(draft.CurrencyCode.Trim().Length == 3, T("error.la_moneda_debe_ser_un"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
             var duplicate = await c.ScalarAsync<long>(
                 "SELECT COUNT(*) FROM items WHERE sku = $sku AND is_deleted = 0 AND id <> $id", tx,
                 ("$sku", sku), ("$id", existingId ?? Guid.Empty));
-            Require(duplicate == 0, $"Ya existe un artículo con el SKU {sku}.");
+            Require(duplicate == 0, T("error.ya_existe_un_articulo_con", sku));
 
             var id = existingId ?? Guid.NewGuid();
             var version = existingId is null ? 0 : await c.ScalarAsync<int>("SELECT version FROM items WHERE id = $id", tx, ("$id", id));
@@ -154,13 +156,13 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
     {
         RequirePermission(ErpPermissions.EditCatalog);
         var code = draft.Code.Trim().ToUpperInvariant();
-        Require(code.Length > 0, "El código es obligatorio.");
-        Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
+        Require(code.Length > 0, T("error.el_codigo_es_obligatorio"));
+        Require(!string.IsNullOrWhiteSpace(draft.Name), T("error.el_nombre_es_obligatorio"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
             var duplicate = await c.ScalarAsync<long>("SELECT COUNT(*) FROM sites WHERE code = $code AND is_deleted = 0", tx, ("$code", code));
-            Require(duplicate == 0, $"Ya existe una sede con el código {code}.");
+            Require(duplicate == 0, T("error.ya_existe_una_sede_con", code));
 
             var id = Guid.NewGuid();
             var body = new
@@ -183,15 +185,15 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
     public Task<Guid> CreatePartyAsync(PartyDraft draft, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.CreateParty);
-        Require(!string.IsNullOrWhiteSpace(draft.Name), "El nombre es obligatorio.");
-        Require(draft.IsCustomer || draft.IsSupplier, "Indica si es cliente, proveedor o ambos.");
+        Require(!string.IsNullOrWhiteSpace(draft.Name), T("error.el_nombre_es_obligatorio"));
+        Require(draft.IsCustomer || draft.IsSupplier, T("error.indica_si_es_cliente_proveedor"));
         var docType = Clean(draft.DocumentType)?.ToUpperInvariant();
         var docNumber = Clean(draft.DocumentNumber);
-        Require((docType is null) == (docNumber is null), "El tipo y el número de documento van juntos.");
+        Require((docType is null) == (docNumber is null), T("error.el_tipo_el_numero_de"));
         if (docType == "RUC")
-            Require(Ruc().IsMatch(docNumber!), "El RUC debe tener 11 dígitos.");
+            Require(Ruc().IsMatch(docNumber!), T("error.el_ruc_debe_tener_11"));
         if (docType == "DNI")
-            Require(Dni().IsMatch(docNumber!), "El DNI debe tener 8 dígitos.");
+            Require(Dni().IsMatch(docNumber!), T("error.el_dni_debe_tener_8"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
@@ -199,7 +201,7 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
             {
                 var existing = await c.ScalarAsync<string?>(
                     "SELECT name FROM parties WHERE document_number = $doc AND is_deleted = 0 LIMIT 1", tx, ("$doc", docNumber));
-                Require(existing is null, $"El documento {docNumber} ya está registrado ({existing}).");
+                Require(existing is null, T("error.el_documento_ya_esta_registrado", docNumber, existing));
             }
 
             var id = Guid.NewGuid();
