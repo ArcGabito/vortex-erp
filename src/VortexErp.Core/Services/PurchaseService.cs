@@ -4,6 +4,8 @@ using VortexErp.Core.Domain;
 using VortexErp.Core.Integration;
 using VortexErp.Core.Sync;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Services;
 
 /// <summary>
@@ -16,17 +18,17 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
         DateOnly? expectedAt = null, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.CreatePurchase);
-        Require(supplierId != Guid.Empty, "Elige el proveedor.");
-        Require(lines.Count > 0, "Agrega al menos un artículo.");
-        Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
-        Require(lines.All(l => l.UnitPrice is >= 0), "Indica el costo unitario de cada artículo.");
+        Require(supplierId != Guid.Empty, T("error.elige_el_proveedor"));
+        Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
+        Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
+        Require(lines.All(l => l.UnitPrice is >= 0), T("error.indica_el_costo_unitario_de"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
             Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM parties WHERE id = $id AND is_supplier = 1 AND is_deleted = 0", tx,
-                ("$id", supplierId)) > 0, "El proveedor no existe.");
+                ("$id", supplierId)) > 0, T("error.el_proveedor_no_existe"));
             var site = siteId ?? await DefaultSiteAsync(c, tx);
-            Require(site is not null, "Elige el almacén que recibe la compra.");
+            Require(site is not null, T("error.elige_el_almacen_que_recibe"));
 
             var id = Guid.NewGuid();
             var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Purchase, Context.DeviceTag);
@@ -47,7 +49,7 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
         return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM purchase_orders WHERE id = $id", tx, ("$id", id));
-            Require(status == PurchaseStatuses.Open, "Solo se cancela una orden sin recepciones.");
+            Require(status == PurchaseStatuses.Open, T("error.solo_se_cancela_una_orden"));
             var number = await c.ScalarAsync<string>("SELECT number FROM purchase_orders WHERE id = $id", tx, ("$id", id));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "purchase_order", id, number, null);
             return await c.ExecAsync("UPDATE purchase_orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", id));

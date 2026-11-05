@@ -4,6 +4,8 @@ using VortexApi.Suite.Taxes;
 using VortexErp.Core.Data;
 using VortexErp.Core.Domain;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Services;
 
 /// <summary>Base de los servicios: base local, contexto del usuario y reloj.</summary>
@@ -49,7 +51,7 @@ public abstract class ErpService(ErpDatabase db, IErpContext context, TimeProvid
     protected void RequirePermission(string permission)
     {
         if (!Context.Can(permission))
-            throw new ErpValidationException($"Tu rol ({Context.Role}) no permite {ErpPermissions.Describe(permission)}. Pide al administrador que te asigne el rol adecuado en el hub.");
+            throw new ErpValidationException(T("error.permiso_administrador", Context.Role, ErpPermissions.Describe(permission)));
     }
 
     /// <summary>Deja la acción en la bitácora, en la misma transacción que la acción.</summary>

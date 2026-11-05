@@ -4,6 +4,8 @@ using VortexErp.Core.Domain;
 using VortexErp.Core.Integration;
 using VortexErp.Core.Sync;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Services;
 
 /// <summary>
@@ -35,9 +37,9 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
             {
                 CustomerId = r.GuidOrNull("customer_id"), Currency = r.Str("currency_code"), OrderId = r.GuidOrNull("order_id"),
             }, tx, ("$id", quoteId));
-            Require(quote is not null, "La cotización no existe.");
-            Require(quote!.OrderId is null, "La cotización ya tiene pedido.");
-            Require(quote.CustomerId is not null, "La cotización no tiene cliente.");
+            Require(quote is not null, T("error.la_cotizacion_no_existe"));
+            Require(quote!.OrderId is null, T("error.la_cotizacion_ya_tiene_pedido"));
+            Require(quote.CustomerId is not null, T("error.la_cotizacion_no_tiene_cliente"));
 
             var orderId = OrderIdForQuote(quoteId);
             if (await c.ScalarAsync<string?>("SELECT number FROM sales_orders WHERE id = $id", tx, ("$id", orderId)) is { } existing)
@@ -58,8 +60,8 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         return InTransactionAsync(async (c, tx, now) =>
         {
             var order = await GetAsync(c, tx, orderId);
-            Require(order is not null, "El pedido no existe.");
-            Require(order!.CanCancel, "Solo se cancela un pedido abierto y sin comprobante.");
+            Require(order is not null, T("error.el_pedido_no_existe"));
+            Require(order!.CanCancel, T("error.solo_se_cancela_un_pedido"));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId, order.Number,
                 $"Total {order.Total:0.##} {order.CurrencyCode}");
             return await c.ExecAsync("UPDATE sales_orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
@@ -166,19 +168,19 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
     private async Task<string> CreateInternalAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId, Guid customerId,
         Guid? siteId, IReadOnlyList<DocumentLine> lines, string currencyCode, Guid? quoteId)
     {
-        Require(customerId != Guid.Empty, "Elige el cliente.");
-        Require(lines.Count > 0, "Agrega al menos un artículo.");
-        Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
-        Require(lines.All(l => (l.UnitPrice ?? 0) >= 0), "Los precios no pueden ser negativos.");
+        Require(customerId != Guid.Empty, T("error.elige_el_cliente"));
+        Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
+        Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
+        Require(lines.All(l => (l.UnitPrice ?? 0) >= 0), T("error.los_precios_no_pueden_ser"));
         Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM parties WHERE id = $id AND is_deleted = 0", tx, ("$id", customerId)) > 0,
-            "El cliente no existe.");
+            T("error.el_cliente_no_existe"));
         var site = siteId ?? await DefaultSiteAsync(c, tx);
 
         var orderLines = new List<OrderLine>();
         foreach (var l in lines)
         {
             var price = l.UnitPrice ?? await c.ScalarAsync<decimal?>("SELECT price FROM items WHERE id = $id", tx, ("$id", l.ItemId));
-            Require(price is not null, "Uno de los artículos ya no existe en el catálogo.");
+            Require(price is not null, T("error.uno_de_los_articulos_ya"));
             orderLines.Add(new OrderLine(l.ItemId, l.Quantity, price!.Value));
         }
 

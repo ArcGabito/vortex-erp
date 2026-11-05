@@ -6,6 +6,8 @@ using VortexErp.Core.Domain;
 using VortexErp.Core.Integration;
 using VortexErp.Core.Sync;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Services;
 
 /// <summary>
@@ -24,8 +26,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         return InTransactionAsync(async (c, tx, now) =>
         {
             var order = await OrderService.GetAsync(c, tx, orderId);
-            Require(order is not null, "El pedido no existe.");
-            Require(order!.CanInvoice, order.InvoiceId is not null ? "El pedido ya tiene comprobante." : "Este pedido no se puede facturar.");
+            Require(order is not null, T("error.el_pedido_no_existe"));
+            Require(order!.CanInvoice, order.InvoiceId is not null ? T("error.el_pedido_ya_tiene_comprobante") : T("error.este_pedido_no_se_puede"));
             var lines = await OrderService.LinesAsync(c, tx, orderId);
             var codes = await TaxCodesAsync(c, tx, lines.Select(l => l.ItemId));
             var invoiceLines = lines.Select(l => new InvoiceLine(l.ItemId, l.ItemName, l.Quantity, l.UnitPrice, l.Total, codes[l.ItemId])).ToList();
@@ -47,9 +49,9 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         return InTransactionAsync(async (c, tx, now) =>
         {
             var sale = await PosSaleAsync(c, tx, saleId);
-            Require(sale is not null, "La venta no existe.");
-            Require(sale!.CanInvoice, sale.InvoiceId is not null ? "La venta ya tiene comprobante." : "La venta está anulada.");
-            Require(sale.Returned == 0, "La venta tiene devoluciones: emite el comprobante por lo que quedó en un pedido.");
+            Require(sale is not null, T("error.la_venta_no_existe"));
+            Require(sale!.CanInvoice, sale.InvoiceId is not null ? T("error.la_venta_ya_tiene_comprobante") : T("error.la_venta_esta_anulada"));
+            Require(sale.Returned == 0, T("error.la_venta_tiene_devoluciones_emite"));
             var lines = await c.QueryAsync("SELECT * FROM pos_sale_lines WHERE sale_id = $id ORDER BY line_no", r =>
                 new InvoiceLine(r.Guid("item_id"), r.StrOrNull("name") ?? "Artículo", r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total"),
                     r.StrOrNull("tax_code") ?? (r.Bool("taxable") ? TaxCategories.Standard : TaxCategories.Exempt)), tx, ("$id", saleId));
@@ -65,13 +67,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     private async Task<(Guid Id, string Number)> IssueAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string kind,
         Guid? customerId, Guid? orderId, Guid? saleId, string currency, IReadOnlyList<InvoiceLine> lines, decimal paid, int creditDays)
     {
-        Require(kind is InvoiceKinds.Invoice or InvoiceKinds.Receipt, "Elige factura o boleta.");
-        Require(lines.Count > 0, "El documento no tiene líneas.");
+        Require(kind is InvoiceKinds.Invoice or InvoiceKinds.Receipt, T("error.elige_factura_boleta"));
+        Require(lines.Count > 0, T("error.el_documento_no_tiene_lineas"));
         if (kind == InvoiceKinds.Invoice)
         {
             var docType = customerId is null ? null
                 : await c.ScalarAsync<string?>("SELECT document_type FROM parties WHERE id = $id", tx, ("$id", customerId));
-            Require(docType == "RUC", "La factura requiere un cliente con RUC. Para personas emite una boleta.");
+            Require(docType == "RUC", T("error.la_factura_requiere_un_cliente"));
         }
 
         // Impuesto del país de la empresa, desglosado por tasa y redondeado con la moneda del comprobante.
@@ -93,13 +95,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.RegisterPayment);
-        Require(amount > 0, "El monto debe ser mayor que cero.");
-        Require(PaymentMethods.All.Contains(method), "Medio de pago desconocido.");
+        Require(amount > 0, T("error.el_monto_debe_ser_mayor"));
+        Require(PaymentMethods.All.Contains(method), T("error.medio_de_pago_desconocido"));
         return InTransactionAsync(async (c, tx, now) =>
     {
         var invoice = await GetAsync(c, tx, invoiceId);
-        Require(invoice is not null, "El comprobante no existe.");
-        Require(amount <= invoice!.Balance, $"El saldo del comprobante es {invoice.Balance:0.00}.");
+        Require(invoice is not null, T("error.el_comprobante_no_existe"));
+        Require(amount <= invoice!.Balance, T("error.el_saldo_del_comprobante_es", invoice.Balance));
 
         var id = Guid.NewGuid();
         var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);

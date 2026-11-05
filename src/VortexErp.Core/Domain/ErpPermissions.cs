@@ -1,5 +1,7 @@
 using VortexApi.Suite.Security;
 
+using static VortexErp.Core.Texts.CoreText;
+
 namespace VortexErp.Core.Domain;
 
 /// <summary>
@@ -37,16 +39,16 @@ public static class ErpPermissions
 
     public static string Describe(string permission) => permission switch
     {
-        CreateOrder => "crear pedidos",
-        CancelOrder => "cancelar pedidos",
-        ConvertQuote => "convertir cotizaciones en pedidos",
-        IssueInvoice => "emitir comprobantes",
-        RegisterPayment => "registrar cobros",
-        CreatePurchase => "crear órdenes de compra",
-        CancelPurchase => "cancelar órdenes de compra",
-        CreateParty => "registrar clientes y proveedores",
-        EditCatalog => "editar artículos y sedes",
-        ViewAudit => "ver la auditoría",
+        CreateOrder => T("permiso.createorder"),
+        CancelOrder => T("permiso.cancelorder"),
+        ConvertQuote => T("permiso.convertquote"),
+        IssueInvoice => T("permiso.issueinvoice"),
+        RegisterPayment => T("permiso.registerpayment"),
+        CreatePurchase => T("permiso.createpurchase"),
+        CancelPurchase => T("permiso.cancelpurchase"),
+        CreateParty => T("permiso.createparty"),
+        EditCatalog => T("permiso.editcatalog"),
+        ViewAudit => T("permiso.viewaudit"),
         _ => permission,
     };
 }
