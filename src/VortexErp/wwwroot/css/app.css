@@ -1,5 +1,5 @@
 /* Vortex ERP — diseño 2026-11: monocromático. Lienzo gris claro, paneles de dos tonos (cabecera gris con etiqueta en
-   mayúsculas monoespaciadas y cuerpo blanco), tinta negra para lo principal y cifras en monoespaciada. El naranja
+   mayúsculas monoespaciadas y cuerpo blanco), tinta negra para lo principal y cifras en monoespaciada. El morado .NET
    queda solo en el logo. Los colores de estado (bien/aviso/error/info) se reservan para estados y van con texto. */
 
 @font-face {
@@ -28,7 +28,7 @@
     --accent-2: #2b2b2b;
     --accent-ink: #141414;
     --accent-soft: #f0f0ee;
-    --brand: #ff5b14;
+    --brand: #512bd4;
 
     --good: #15803d;
     --good-dot: #22c55e;
@@ -278,7 +278,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .btn-accent {
     background: linear-gradient(180deg, var(--accent-2), var(--accent));
     color: #fff;
-    box-shadow: 0 6px 16px rgba(255, 91, 20, .28);
+    box-shadow: 0 6px 16px rgba(81, 43, 212, .28);
 }
 
 .btn-accent:hover:not(:disabled) { background: var(--accent); }
@@ -329,7 +329,7 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .avatar.user {
     color: #fff;
-    background: linear-gradient(135deg, #ff8a4c, var(--accent));
+    background: linear-gradient(135deg, #7b5ce6, var(--accent));
 }
 
 .avatar.square { border-radius: 12px; }
@@ -463,7 +463,7 @@ textarea.control { height: auto; min-height: 80px; padding: 12px 14px; resize: v
 .control:focus, .select:focus {
     border-color: var(--border-strong);
     background: var(--surface);
-    box-shadow: 0 0 0 4px rgba(255, 91, 20, .10);
+    box-shadow: 0 0 0 4px rgba(81, 43, 212, .10);
 }
 
 .control::placeholder { color: var(--text-3); font-weight: 500; }
@@ -943,6 +943,8 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     height: 100%;
     object-fit: cover;
     object-position: 50% 40%;
+    /* La portada es naranja; se gira el tono hacia el morado .NET de la suite sin tocar la imagen. */
+    filter: hue-rotate(-90deg);
 }
 
 .login-main {
