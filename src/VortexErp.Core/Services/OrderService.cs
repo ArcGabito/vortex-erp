@@ -73,8 +73,9 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
     public async Task<PagedResult<OrderRow>> GetOrdersAsync(string? search, string? status, int page, int pageSize, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        const string where = """
-            WHERE ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL))
+        var where = $"""
+            WHERE (1 = 1{SiteFilterOrNull("o.site_id")})
+              AND ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL))
               AND ($search IS NULL OR o.number LIKE $like OR p.name LIKE $like OR p.document_number LIKE $like)
             """;
         var args = new (string, object?)[]
@@ -175,6 +176,7 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM parties WHERE id = $id AND is_deleted = 0", tx, ("$id", customerId)) > 0,
             T("error.el_cliente_no_existe"));
         var site = siteId ?? await DefaultSiteAsync(c, tx);
+        Require(site is null || CanUseSite(site.Value), T("error.sede_no_asignada"));
 
         var orderLines = new List<OrderLine>();
         foreach (var l in lines)

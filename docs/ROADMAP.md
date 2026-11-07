@@ -24,8 +24,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-01 | Pedidos manuales, del CRM, del WMS y desde cotizaciones aceptadas | Hecho | — |
 | ERP-02 | Factura y boleta con impuestos por país y serie por equipo | Hecho | 1 |
 | ERP-03 | Comprobantes desde las ventas del POS | Hecho | — |
-| ERP-04 | Notas de crédito (devolución, descuento, anulación) y de débito | Pendiente | 2 |
-| ERP-05 | Anulación de comprobantes con motivo, replicada | Pendiente | 2 |
+| ERP-04 | Notas de crédito (devolución, descuento, anulación) y de débito | Hecho | 2 |
+| ERP-05 | Anulación de comprobantes con motivo, replicada | Hecho | 2 |
 | ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Pendiente | 2 |
 | ERP-07 | Listas de precios y descuentos por cliente | Pendiente | 3 |
 | ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Pendiente | 3 |
@@ -37,8 +37,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | ERP-15 | Cobros parciales y cuentas por cobrar con lo vencido | Hecho | — |
-| ERP-16 | Antigüedad de saldos (0-30, 31-60, 61-90, +90) | Pendiente | 2 |
-| ERP-17 | Estado de cuenta del cliente en PDF | Pendiente | 2 |
+| ERP-16 | Antigüedad de saldos (0-30, 31-60, 61-90, +90) | Hecho | 2 |
+| ERP-17 | Estado de cuenta del cliente en PDF | Hecho | 2 |
 | ERP-18 | Recordatorios de cobranza por correo o WhatsApp | Pendiente | 3 |
 | ERP-19 | Anticipos y su aplicación a comprobantes | Pendiente | 3 |
 | ERP-20 | Retenciones, percepciones y detracciones | Pendiente | 7 |
@@ -97,7 +97,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-67 | Auditoría de cambios de precio, notas, pagos y asientos | Pendiente | 2-5 |
 | ERP-68 | Aprobaciones configurables por tipo de documento y monto | Pendiente | 8 |
 | ERP-69 | Segregación de funciones (quien registra no aprueba) | Pendiente | 8 |
-| ERP-70 | Sedes por usuario | Pendiente | 2 |
+| ERP-70 | Sedes por usuario | Hecho | 2 |
 
 ### Localización fiscal
 
@@ -152,6 +152,12 @@ comprobantes guardan moneda y tipo de cambio del día.
 
 **Terminado cuando:** una nota de crédito parcial deja el saldo del cliente al día en dos equipos; una factura en
 dólares se cobra en soles y la diferencia queda registrada; el CRM y el POS ven la anulación.
+
+**Estado (2026-11):** 2a hecha: notas de crédito (anulación, devolución por líneas, descuento, corrección) y de débito
+vinculadas al comprobante, anulación de comprobantes sin cobros ni notas, antigüedad de saldos por cliente y moneda,
+estado de cuenta con PDF y sedes por usuario. Eventos `credit_note.issued`, `debit_note.issued` e `invoice.voided`
+(propuestos al hub). Pruebas en `NotesTests`. **Pendiente (2b):** multimoneda con el tipo de cambio del hub y
+diferencia de cambio (ERP-06); que el CRM y el POS muestren la anulación.
 
 ## Fase 3: ciclo de venta completo · M
 

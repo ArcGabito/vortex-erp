@@ -25,16 +25,27 @@ public abstract class ErpService(ErpDatabase db, IErpContext context, TimeProvid
         return result;
     }
 
-    /// <summary>Sede por defecto: la elegida en este equipo o el primer almacén activo.</summary>
+    /// <summary>Sede por defecto: la elegida en este equipo (si el usuario puede usarla) o el primer almacén activo permitido.</summary>
     protected async Task<Guid?> DefaultSiteAsync(SqliteConnection c, SqliteTransaction? tx)
     {
-        if (Context.DefaultSiteId is { } chosen)
+        if (Context.DefaultSiteId is { } chosen && CanUseSite(chosen))
             return chosen;
-        return await c.ScalarAsync<string?>("""
-            SELECT id FROM sites WHERE is_deleted = 0 AND is_active = 1
+        return await c.ScalarAsync<string?>($"""
+            SELECT id FROM sites WHERE is_deleted = 0 AND is_active = 1{SiteFilter("id")}
             ORDER BY CASE kind WHEN 'Warehouse' THEN 0 ELSE 1 END, code LIMIT 1
             """, tx) is { } id ? Guid.Parse(id) : null;
     }
+
+    /// <summary>Si el usuario puede trabajar en la sede (sin sedes asignadas en el hub, en todas).</summary>
+    protected bool CanUseSite(Guid siteId) => Context.SiteIds.Count == 0 || Context.SiteIds.Contains(siteId);
+
+    /// <summary>Condición SQL que limita a las sedes del usuario (vacía si puede usar todas). Los Ids son Guid: no hay inyección.</summary>
+    protected string SiteFilter(string column) =>
+        Context.SiteIds.Count == 0 ? "" : $" AND {column} IN ({string.Join(", ", Context.SiteIds.Select(s => $"'{s}'"))})";
+
+    /// <summary>Como <see cref="SiteFilter"/>, pero deja pasar los documentos sin sede.</summary>
+    protected string SiteFilterOrNull(string column) =>
+        Context.SiteIds.Count == 0 ? "" : $" AND ({column} IS NULL{SiteFilter(column).Replace(" AND ", " OR ")})";
 
     /// <summary>Inicio del día local (Perú, UTC-5) como instante UTC, para filtrar "hoy".</summary>
     protected DateTimeOffset StartOfDay(int daysAgo = 0)
@@ -99,6 +110,17 @@ internal static class DocumentNumbers
     {
         var series = (kind == InvoiceKinds.Invoice ? "F" : "B") + deviceTag[..3];
         return $"{series}-{await NextValueAsync(c, tx, series):D6}";
+    }
+
+    /// <summary>
+    /// Nota de crédito o débito: misma serie que el tipo de comprobante que modifica (F o B + 3 caracteres del equipo), con
+    /// su propia correlación por tipo de nota, como lo admite SUNAT (tipo + serie + número es único).
+    /// </summary>
+    public static async Task<string> NextNoteAsync(SqliteConnection c, SqliteTransaction tx, string noteKind, string invoiceKind, string deviceTag)
+    {
+        var series = (invoiceKind == InvoiceKinds.Invoice ? "F" : "B") + deviceTag[..3];
+        var key = (noteKind == NoteKinds.Credit ? "NC:" : "ND:") + series;
+        return $"{series}-{await NextValueAsync(c, tx, key):D6}";
     }
 
     private static Task<long> NextValueAsync(SqliteConnection c, SqliteTransaction tx, string prefix) =>

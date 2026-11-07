@@ -41,6 +41,9 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.SaleReturned, HandleSaleReturnedAsync)
         .OnEvent(SuiteEvents.InvoiceIssued, HandleInvoiceIssuedAsync)
         .OnEvent(SuiteEvents.PaymentReceived, HandlePaymentReceivedAsync)
+        .OnEvent(SuiteEvents.CreditNoteIssued, HandleCreditNoteIssuedAsync)
+        .OnEvent(SuiteEvents.DebitNoteIssued, HandleDebitNoteIssuedAsync)
+        .OnEvent(SuiteEvents.InvoiceVoided, HandleInvoiceVoidedAsync)
         .OnEvent(SuiteEvents.PurchaseOrderCreated, HandlePurchaseOrderCreatedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync);
@@ -123,6 +126,34 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
             if (payment.PaymentId == Guid.Empty || payment.Amount <= 0)
                 return "sin paymentId o monto";
             await InvoiceService.ApplyPaymentReceivedAsync(c, tx, e.OccurredAt, payment);
+            return null;
+        }, ct);
+
+    public Task HandleCreditNoteIssuedAsync(VortexEvent e, CancellationToken ct = default) => HandleNoteAsync(e, Domain.NoteKinds.Credit, ct);
+
+    public Task HandleDebitNoteIssuedAsync(VortexEvent e, CancellationToken ct = default) => HandleNoteAsync(e, Domain.NoteKinds.Debit, ct);
+
+    /// <summary>Nota de crédito o débito de otro equipo del ERP (solo el ERP las emite).</summary>
+    private Task HandleNoteAsync(VortexEvent e, string kind, CancellationToken ct) =>
+        ApplyOnceAsync<InvoiceNoteIssued>(e, async (note, c, tx) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: las notas solo las emite el ERP";
+            if (note.NoteId == Guid.Empty || note.InvoiceId == Guid.Empty || note.Total <= 0)
+                return "sin noteId, invoiceId o total";
+            await InvoiceService.ApplyNoteIssuedAsync(c, tx, kind, note);
+            return null;
+        }, ct);
+
+    /// <summary>Comprobante anulado en otro equipo del ERP.</summary>
+    public Task HandleInvoiceVoidedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<InvoiceVoided>(e, async (voided, c, tx) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: los comprobantes solo los anula el ERP";
+            if (voided.InvoiceId == Guid.Empty)
+                return "sin invoiceId";
+            await InvoiceService.ApplyInvoiceVoidedAsync(c, tx, e.OccurredAt, voided);
             return null;
         }, ct);
 

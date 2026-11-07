@@ -176,13 +176,54 @@
                     <dt>@T("invoices.subtotal")</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
                     <dt>@T("invoices.impuesto")</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
                     <dt class="grand">@T("invoices.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
+                    @if (d.Debited > 0)
+                    {
+                        <dt>@T("invoices.notas_de_debito")</dt><dd>+@Fmt.Money(d.Debited, d.CurrencyCode)</dd>
+                    }
+                    @if (d.Credited > 0)
+                    {
+                        <dt>@T("invoices.notas_de_credito")</dt><dd>−@Fmt.Money(d.Credited, d.CurrencyCode)</dd>
+                    }
                     <dt>@T("invoices.cobrado")</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
-                    <dt>@T("invoices.saldo_2")</dt><dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
+                    <dt>@(d.Balance < 0 ? T("invoices.saldo_a_favor") : T("invoices.saldo_2"))</dt>
+                    <dd class="@(d.Balance > 0 ? "warn-text" : "good-text")">@Fmt.Money(Math.Abs(d.Balance), d.CurrencyCode)</dd>
                 </dl>
             </div>
+            @if (d.IsVoided)
+            {
+                <div class="alert warn"><Icon Name="ban" Size="18" /><span>@T("invoices.anulado_el", Fmt.DateTime(d.VoidedAt ?? d.IssuedAt), d.VoidReason ?? "")</span></div>
+            }
+            @if (_notes.Count > 0)
+            {
+                <div>
+                    <h4 style="font-size:14px;margin-bottom:8px">@T("invoices.notas")</h4>
+                    @foreach (var n in _notes)
+                    {
+                        <div class="list-row" @key="n.Id">
+                            <div class="two-line">
+                                <span class="t1">@(n.Kind == NoteKinds.Credit ? T("invoices.nota_de_credito") : T("invoices.nota_de_debito")) @n.Number</span>
+                                <span class="t2">@Fmt.NoteReason(n.Reason) · @Fmt.Date(n.IssuedAt)@(n.Description is null ? "" : $" · {n.Description}")</span>
+                            </div>
+                            <strong class="end @(n.Kind == NoteKinds.Credit ? "qty-pos" : "qty-neg")">@(n.Kind == NoteKinds.Credit ? "−" : "+")@Fmt.Money(n.Total, n.CurrencyCode)</strong>
+                        </div>
+                    }
+                </div>
+            }
         </ChildContent>
         <Footer>
-            @if (!d.IsPaid && Session.Can(ErpPermissions.RegisterPayment))
+            @if (!d.IsVoided && Session.Can(ErpPermissions.VoidInvoice) && d.CanVoid)
+            {
+                <button class="btn btn-danger" @onclick="() => StartVoid(d)"><Icon Name="ban" Size="18" />@T("invoices.anular")</button>
+            }
+            @if (!d.IsVoided && Session.Can(ErpPermissions.IssueNote))
+            {
+                @if (d.Creditable > 0)
+                {
+                    <button class="btn" @onclick="() => StartNote(d, NoteKinds.Credit)"><Icon Name="undo" Size="18" />@T("invoices.nota_de_credito")</button>
+                }
+                <button class="btn" @onclick="() => StartNote(d, NoteKinds.Debit)"><Icon Name="plus" Size="18" />@T("invoices.nota_de_debito")</button>
+            }
+            @if (!d.IsPaid && !d.IsVoided && Session.Can(ErpPermissions.RegisterPayment))
             {
                 <button class="btn btn-dark" @onclick="() => StartPayment(d)"><Icon Name="wallet" Size="18" />@T("invoices.registrar_cobro")</button>
             }
@@ -223,7 +264,143 @@
     </Modal>
 }
 
+@if (_noting is { } inv)
+{
+    var credit = _noteKind == NoteKinds.Credit;
+    <Modal Title="@(credit ? T("invoices.nota_de_credito") : T("invoices.nota_de_debito"))"
+           Subtitle="@(T("invoices.de_saldo", inv.Number, Fmt.Money(credit ? inv.Creditable : inv.Balance, inv.CurrencyCode)))"
+           Size="@(credit && _noteReason == NoteReasons.Return ? "lg" : "sm")" Error="@_error" OnClose="() => _noting = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("invoices.motivo")</label>
+                <select class="select" @bind="_noteReason">
+                    @foreach (var reason in credit ? NoteReasons.CreditReasons : NoteReasons.DebitReasons)
+                    {
+                        <option value="@reason">@Fmt.NoteReason(reason)</option>
+                    }
+                </select>
+            </div>
+            @if (credit && _noteReason == NoteReasons.Void)
+            {
+                <div class="alert info"><Icon Name="alert" Size="18" /><span>@T("invoices.anulacion_rebaja_todo", Fmt.Money(inv.Creditable, inv.CurrencyCode))</span></div>
+            }
+            else if (credit && _noteReason == NoteReasons.Return)
+            {
+                <div class="lines">
+                    @foreach (var line in _noteLines)
+                    {
+                        <div class="line with-price" @key="line.Line.LineNo">
+                            <div class="two-line">
+                                <span class="t1">@line.Line.Description</span>
+                                <span class="t2">@T("invoices.se_pueden_devolver", Fmt.Qty(line.Line.Returnable), Fmt.Money(line.Line.UnitPrice, inv.CurrencyCode))</span>
+                            </div>
+                            <input class="control" type="number" min="0" max="@line.Line.Returnable" step="any" @bind="line.Quantity" @bind:event="oninput" aria-label="@(T("invoices.cant"))" />
+                            <strong style="text-align:right">@Fmt.Money(line.Line.Quantity == 0 ? 0 : line.Line.Total * line.Quantity / line.Line.Quantity, inv.CurrencyCode)</strong>
+                            <span></span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="field">
+                    <label>@T("invoices.monto_con_impuesto", Fmt.Symbol(inv.CurrencyCode))</label>
+                    <input class="control" type="number" min="0" step="0.01" @bind="_amount" />
+                </div>
+            }
+            <div class="field">
+                <label>@(credit && _noteReason is NoteReasons.Void or NoteReasons.Return ? T("invoices.detalle_opcional") : T("invoices.descripcion"))</label>
+                <input class="control" placeholder="@(credit ? T("invoices.ej_descuento_por_pronto_pago") : T("invoices.ej_intereses_por_mora"))" @bind="_reference" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _noting = null">@T("invoices.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="IssueNoteAsync">@T("invoices.emitir_nota")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_voiding is { } v)
+{
+    <Modal Title="@(T("invoices.anular_comprobante", v.Number))" Subtitle="@(T("invoices.anular_explica"))" Size="sm" Error="@_error" OnClose="() => _voiding = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("invoices.motivo")</label>
+                <input class="control" placeholder="@(T("invoices.ej_ruc_equivocado"))" @bind="_reference" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _voiding = null">@T("invoices.cancelar")</button>
+            <button class="btn btn-danger" disabled="@_busy" @onclick="VoidAsync">@T("invoices.anular")</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
+    private sealed class ReturnLine(InvoiceLineRow line)
+    {
+        public InvoiceLineRow Line { get; } = line;
+        public decimal Quantity { get; set; }
+    }
+
+    private IReadOnlyList<InvoiceNoteRow> _notes = [];
+    private InvoiceRow? _noting, _voiding;
+    private string _noteKind = NoteKinds.Credit;
+    private string _noteReason = NoteReasons.Return;
+    private List<ReturnLine> _noteLines = [];
+
+    private void StartNote(InvoiceRow invoice, string kind)
+    {
+        _error = null;
+        _amount = 0;
+        _reference = null;
+        _noteKind = kind;
+        _noteReason = kind == NoteKinds.Credit ? NoteReasons.Return : NoteReasons.Interest;
+        _noteLines = _lines.Where(l => l.Returnable > 0).Select(l => new ReturnLine(l)).ToList();
+        _detail = null;
+        _noting = invoice;
+    }
+
+    private async Task IssueNoteAsync()
+    {
+        if (_noting is not { } invoice)
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = _noteKind == NoteKinds.Debit
+            ? await Erp.Invoices.IssueDebitNoteAsync(invoice.Id, _noteReason, _amount, _reference ?? "")
+            : await Erp.Invoices.IssueCreditNoteAsync(invoice.Id, _noteReason, _noteReason switch
+            {
+                NoteReasons.Void => [],
+                NoteReasons.Return => _noteLines.Where(l => l.Quantity > 0).Select(l => new NoteLineDraft(l.Line.LineNo, l.Quantity)).ToList(),
+                _ => [new NoteLineDraft(Amount: _amount, Description: _reference)],
+            }, _reference));
+        _busy = false;
+        if (_error is not null)
+            return;
+        Toasts.Success(T("invoices.nota_emitida", number));
+        _noting = null;
+    }
+
+    private void StartVoid(InvoiceRow invoice)
+    {
+        _error = null;
+        _reference = null;
+        _detail = null;
+        _voiding = invoice;
+    }
+
+    private async Task VoidAsync()
+    {
+        if (_voiding is not { } invoice)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Invoices.VoidAsync(invoice.Id, _reference ?? ""), T("invoices.comprobante_anulado", invoice.Number));
+        _busy = false;
+        if (_error is null)
+            _voiding = null;
+    }
+
     [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
     [SupplyParameterFromQuery(Name = "caja")] public int? PosQuery { get; set; }
 
@@ -291,6 +468,7 @@
     {
         _lines = await Erp.Invoices.GetLinesAsync(invoice.Id);
         _payments = (await Erp.Invoices.GetPaymentsAsync(invoice.Id, 1, 50)).Items;
+        _notes = await Erp.Invoices.GetNotesAsync(invoice.Id);
         _detail = invoice;
     }
 

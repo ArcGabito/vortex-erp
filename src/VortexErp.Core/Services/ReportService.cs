@@ -54,10 +54,10 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         var today = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime).ToString("yyyy-MM-dd");
 
         var receivable = await c.QueryAsync("""
-            SELECT COALESCE(SUM(total - paid), 0) AS balance,
-                   COALESCE(SUM(CASE WHEN due_date < $today THEN total - paid ELSE 0 END), 0) AS overdue,
+            SELECT COALESCE(SUM(total + debited - credited - paid), 0) AS balance,
+                   COALESCE(SUM(CASE WHEN due_date < $today THEN total + debited - credited - paid ELSE 0 END), 0) AS overdue,
                    COUNT(CASE WHEN due_date < $today THEN 1 END) AS overdue_count
-            FROM invoices WHERE total - paid > 0
+            FROM invoices WHERE status = 'issued' AND total + debited - credited - paid > 0
             """, r => (Balance: r.Dec("balance"), Overdue: r.Dec("overdue"), Count: r.Int("overdue_count")), null, ("$today", today));
         var currency = await c.ScalarAsync<string?>("SELECT currency_code FROM company WHERE id = 1") ?? "PEN";
 
@@ -80,9 +80,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         for (var i = months - 1; i >= 0; i--)
         {
             var (from, to) = Month(-i);
-            var invoiced = await c.ScalarAsync<decimal>(
-                "SELECT COALESCE(SUM(total), 0) FROM invoices WHERE sale_id IS NULL AND issued_at >= $from AND issued_at < $to", null,
-                ("$from", from), ("$to", to));
+            var invoiced = await InvoicedAsync(c, from, to);
             var pos = await PosNetAsync(c, from, to);
             list.Add(new MonthRevenue(DateOnly.FromDateTime(from.ToOffset(ErpClock.Offset).DateTime), invoiced, pos));
         }
@@ -125,8 +123,11 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         var to = ToUtc(NextPeriod(starts[^1], grain));
 
         await using var c = await Db.OpenAsync(ct);
-        var invoices = await c.QueryAsync(
-            "SELECT issued_at, total FROM invoices WHERE sale_id IS NULL AND issued_at >= $from AND issued_at < $to",
+        var invoices = await c.QueryAsync($"""
+            SELECT issued_at, total FROM invoices WHERE status = 'issued' AND sale_id IS NULL AND issued_at >= $from AND issued_at < $to
+            UNION ALL
+            {NotesSql}
+            """,
             r => (At: r.Time("issued_at"), Amount: r.Dec("total")), null, ("$from", from), ("$to", to));
         var sales = await c.QueryAsync(
             "SELECT created_at, total - returned AS net FROM pos_sales WHERE status = 'completed' AND created_at >= $from AND created_at < $to",
@@ -137,7 +138,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         // Primera compra de cada cliente, en todo el historial.
         var firsts = await c.QueryAsync("""
             SELECT MIN(at) AS first_at FROM (
-                SELECT customer_id, issued_at AS at FROM invoices WHERE customer_id IS NOT NULL
+                SELECT customer_id, issued_at AS at FROM invoices WHERE customer_id IS NOT NULL AND status = 'issued'
                 UNION ALL
                 SELECT customer_id, created_at FROM pos_sales WHERE customer_id IS NOT NULL AND status = 'completed')
             GROUP BY customer_id HAVING MIN(at) >= $from AND MIN(at) < $to
@@ -176,7 +177,11 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
             var rows = await c.QueryAsync("""
                 SELECT COALESCE(NULLIF(it.category, ''), '') AS category, SUM(x.total) AS total FROM (
                     SELECT l.item_id, l.total FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
-                    WHERE i.sale_id IS NULL AND i.issued_at >= $from AND i.issued_at < $to
+                    WHERE i.status = 'issued' AND i.sale_id IS NULL AND i.issued_at >= $from AND i.issued_at < $to
+                    UNION ALL
+                    SELECT l.item_id, CASE n.kind WHEN 'debit' THEN l.total ELSE -l.total END FROM invoice_note_lines l
+                    JOIN invoice_notes n ON n.id = l.note_id JOIN invoices i ON i.id = n.invoice_id
+                    WHERE i.sale_id IS NULL AND n.issued_at >= $from AND n.issued_at < $to
                     UNION ALL
                     SELECT l.item_id, l.total FROM pos_sale_lines l JOIN pos_sales s ON s.id = l.sale_id
                     WHERE s.status = 'completed' AND s.created_at >= $from AND s.created_at < $to) x
@@ -202,7 +207,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         var today = Today();
         await using var c = await Db.OpenAsync(ct);
         return await c.QueryAsync("""
-            SELECT i.id, i.number, i.kind, i.total, i.paid, i.due_date, i.issued_at, i.currency_code, p.name AS customer_name,
+            SELECT i.id, i.number, i.kind, i.total, i.paid, i.status, i.credited, i.debited, i.due_date, i.issued_at, i.currency_code, p.name AS customer_name,
                    (SELECT description FROM invoice_lines WHERE invoice_id = i.id ORDER BY line_no LIMIT 1) AS first_line,
                    (SELECT COUNT(*) FROM invoice_lines WHERE invoice_id = i.id) AS lines,
                    (SELECT COALESCE(SUM(quantity), 0) FROM invoice_lines WHERE invoice_id = i.id) AS quantity
@@ -213,13 +218,16 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
             {
                 var total = r.Dec("total");
                 var paid = r.Dec("paid");
+                var voided = r.Str("status") == InvoiceStatuses.Voided;
+                var balance = voided ? 0 : total + r.Dec("debited") - r.Dec("credited") - paid;
                 var due = r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : (DateOnly?)null;
-                var status = paid >= total ? TransactionStatuses.Paid
+                var status = voided ? TransactionStatuses.Voided
+                    : balance <= 0 ? TransactionStatuses.Paid
                     : due < today ? TransactionStatuses.Overdue
-                    : paid > 0 ? TransactionStatuses.Partial
+                    : paid > 0 || balance < total ? TransactionStatuses.Partial
                     : TransactionStatuses.Pending;
                 return new RecentTransaction(r.Guid("id"), r.Str("number"), r.Str("kind"), r.StrOrNull("customer_name"),
-                    r.StrOrNull("first_line"), r.Int("lines"), r.Dec("quantity"), total, Math.Max(0, total - paid), status,
+                    r.StrOrNull("first_line"), r.Int("lines"), r.Dec("quantity"), total, Math.Max(0, balance), status,
                     r.Time("issued_at"), r.Str("currency_code"));
             }, null, ("$search", Clean(search)), ("$like", Like(search)), ("$limit", limit));
     }
@@ -233,8 +241,27 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
 
     // Ingresos = comprobantes de pedidos (los de ventas de caja ya cuentan como venta) + ventas de caja netas de devoluciones.
     private static async Task<decimal> RevenueAsync(Microsoft.Data.Sqlite.SqliteConnection c, DateTimeOffset from, DateTimeOffset to) =>
-        await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(total), 0) FROM invoices WHERE sale_id IS NULL AND issued_at >= $from AND issued_at < $to",
-            null, ("$from", from), ("$to", to)) + await PosNetAsync(c, from, to);
+        await InvoicedAsync(c, from, to) + await PosNetAsync(c, from, to);
+
+    /// <summary>Notas de comprobantes de pedidos emitidas en el periodo: las de débito suman y las de crédito restan.</summary>
+    private const string NotesSql = """
+        SELECT n.issued_at, CASE n.kind WHEN 'debit' THEN n.total ELSE -n.total END AS total
+        FROM invoice_notes n JOIN invoices i ON i.id = n.invoice_id
+        WHERE i.sale_id IS NULL AND n.issued_at >= $from AND n.issued_at < $to
+        """;
+
+    /// <summary>
+    /// Facturado en el periodo: comprobantes de pedidos vigentes (los anulados no cuentan) más las notas de débito y menos
+    /// las de crédito emitidas en el periodo.
+    /// </summary>
+    private static Task<decimal> InvoicedAsync(Microsoft.Data.Sqlite.SqliteConnection c, DateTimeOffset from, DateTimeOffset to) =>
+        c.ScalarAsync<decimal>($"""
+            SELECT COALESCE(SUM(total), 0) FROM (
+                SELECT issued_at, total FROM invoices
+                WHERE status = 'issued' AND sale_id IS NULL AND issued_at >= $from AND issued_at < $to
+                UNION ALL
+                {NotesSql})
+            """, null, ("$from", from), ("$to", to));
 
     private static Task<decimal> PosNetAsync(Microsoft.Data.Sqlite.SqliteConnection c, DateTimeOffset from, DateTimeOffset to) =>
         c.ScalarAsync<decimal>("SELECT COALESCE(SUM(total - returned), 0) FROM pos_sales WHERE status = 'completed' AND created_at >= $from AND created_at < $to",

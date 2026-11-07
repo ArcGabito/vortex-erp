@@ -8,6 +8,19 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Notas de crédito y débito (fase 2a):** vinculadas al comprobante, con motivo (anulación, devolución por líneas,
+  descuento, corrección; intereses, aumento de valor, penalidad) y el impuesto desglosado. El saldo del comprobante
+  suma los débitos y resta los créditos; un crédito sobre una factura cobrada deja saldo a favor. Eventos
+  `credit_note.issued` y `debit_note.issued`.
+- **Anulación de comprobantes** emitidos por error (sin cobros ni notas): el pedido o la venta de caja quedan libres
+  para emitir otro. Evento `invoice.voided` con Id determinista. Solo `contador` y `administrador`.
+- **Antigüedad de saldos** por cliente y moneda (por vencer, 1-30, 31-60, 61-90 y más de 90 días) y **estado de
+  cuenta** con saldo anterior, cargos, abonos y saldo acumulado, descargable en PDF.
+- **Sedes por usuario:** con sedes asignadas en el hub, pedidos, compras y ventas de caja solo de esas sedes.
+
+### Changed
+- Los ingresos del panel y de los reportes no cuentan los comprobantes anulados y restan las notas de crédito (suman
+  las de débito) en la fecha en que se emiten.
 - **Microsoft Store:** paquete MSIX generado por `.github/workflows/store.yml` (etiqueta `vX.Y.Z`), firmado por la Store
   para instalar sin la advertencia de SmartScreen; envío automático opcional. Guía en `docs/MICROSOFT-STORE.md`.
 - **El idioma sigue al usuario:** el que elige en Configuración se guarda en el hub y se usa al entrar en cualquier

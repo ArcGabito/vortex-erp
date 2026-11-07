@@ -291,6 +291,7 @@
         TransactionStatuses.Paid => "good",
         TransactionStatuses.Overdue => "bad",
         TransactionStatuses.Partial => "info",
+        TransactionStatuses.Voided => "neutral",
         _ => "warn",
     };
 
@@ -299,6 +300,7 @@
         TransactionStatuses.Paid => T("home.pagado"),
         TransactionStatuses.Overdue => T("home.vencido_estado"),
         TransactionStatuses.Partial => T("home.parcial"),
+        TransactionStatuses.Voided => T("home.anulado"),
         _ => T("home.pendiente"),
     };
 

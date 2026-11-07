@@ -166,5 +166,26 @@ internal static class Schema
         UPDATE pos_sale_lines SET tax_code = CASE taxable WHEN 1 THEN 'standard' ELSE 'exempt' END;
         ALTER TABLE invoice_lines ADD COLUMN tax_code TEXT;
         """ + VortexApi.Suite.Auditing.AuditSchema.Sql,
+        // 3: notas de crédito y débito vinculadas al comprobante y anulación. El saldo del comprobante suma lo debitado y
+        // resta lo acreditado; credited_qty lleva lo devuelto de cada línea para no devolverlo dos veces.
+        """
+        ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'issued';
+        ALTER TABLE invoices ADD COLUMN voided_at TEXT;
+        ALTER TABLE invoices ADD COLUMN void_reason TEXT;
+        ALTER TABLE invoices ADD COLUMN credited REAL NOT NULL DEFAULT 0;
+        ALTER TABLE invoices ADD COLUMN debited REAL NOT NULL DEFAULT 0;
+        ALTER TABLE invoice_lines ADD COLUMN credited_qty REAL NOT NULL DEFAULT 0;
+
+        CREATE TABLE invoice_notes (
+            id TEXT PRIMARY KEY, number TEXT NOT NULL, kind TEXT NOT NULL, origin TEXT NOT NULL, invoice_id TEXT NOT NULL,
+            customer_id TEXT, reason TEXT NOT NULL, description TEXT, issued_at TEXT NOT NULL, currency_code TEXT NOT NULL,
+            subtotal REAL NOT NULL, tax REAL NOT NULL, total REAL NOT NULL, user_name TEXT);
+        CREATE INDEX ix_invoice_notes_invoice ON invoice_notes (invoice_id);
+        CREATE INDEX ix_invoice_notes_customer ON invoice_notes (customer_id, issued_at);
+        CREATE TABLE invoice_note_lines (
+            note_id TEXT NOT NULL, line_no INTEGER NOT NULL, item_id TEXT, description TEXT NOT NULL, quantity REAL NOT NULL,
+            unit_price REAL NOT NULL, total REAL NOT NULL, tax_code TEXT, invoice_line_no INTEGER, PRIMARY KEY (note_id, line_no));
+        CREATE INDEX ix_payments_customer ON payments (customer_id, received_at);
+        """,
     ];
 }

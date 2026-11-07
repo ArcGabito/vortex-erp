@@ -101,7 +101,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     {
         var invoice = await GetAsync(c, tx, invoiceId);
         Require(invoice is not null, T("error.el_comprobante_no_existe"));
-        Require(amount <= invoice!.Balance, T("error.el_saldo_del_comprobante_es", invoice.Balance));
+        Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
+        Require(amount <= invoice.Balance, T("error.el_saldo_del_comprobante_es", invoice.Balance));
 
         var id = Guid.NewGuid();
         var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);
@@ -113,13 +114,264 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     }, ct);
     }
 
+    // ---------- Notas de crédito y débito ----------
+
+    /// <summary>
+    /// Nota de crédito vinculada al comprobante: rebaja su saldo (si ya estaba cobrado, queda saldo a favor del cliente).
+    /// Con motivo <c>void</c> rebaja todo lo que queda; con <c>return</c>, las cantidades de las líneas indicadas; con
+    /// <c>discount</c> o <c>correction</c>, importes libres.
+    /// </summary>
+    public Task<string> IssueCreditNoteAsync(Guid invoiceId, string reason, IReadOnlyList<NoteLineDraft> lines, string? description = null,
+        CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.IssueNote);
+        Require(NoteReasons.CreditReasons.Contains(reason), T("error.motivo_de_nota_desconocido"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var invoice = await GetAsync(c, tx, invoiceId);
+            Require(invoice is not null, T("error.el_comprobante_no_existe"));
+            Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
+            var invoiceLines = await LinesAsync(c, tx, invoiceId);
+            var drafts = reason == NoteReasons.Void
+                ? invoiceLines.Where(l => l.Returnable > 0).Select(l => new NoteLineDraft(l.LineNo, l.Returnable)).ToList()
+                : lines.ToList();
+            Require(drafts.Count > 0, T("error.indica_que_rebaja_la_nota"));
+            if (reason == NoteReasons.Return)
+                Require(drafts.All(d => d.InvoiceLineNo is not null), T("error.la_devolucion_va_por_lineas"));
+
+            var noteLines = BuildNoteLines(invoice, invoiceLines, drafts);
+            if (reason == NoteReasons.Void)
+                noteLines = await VoidLinesAsync(c, tx, invoice, invoiceLines, noteLines);
+            return await IssueNoteAsync(c, tx, now, NoteKinds.Credit, invoice, reason, noteLines, description);
+        }, ct);
+    }
+
+    /// <summary>Nota de débito vinculada al comprobante (intereses, aumento de valor, penalidad): suma a su saldo.</summary>
+    public Task<string> IssueDebitNoteAsync(Guid invoiceId, string reason, decimal amount, string description, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.IssueNote);
+        Require(NoteReasons.DebitReasons.Contains(reason), T("error.motivo_de_nota_desconocido"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var invoice = await GetAsync(c, tx, invoiceId);
+            Require(invoice is not null, T("error.el_comprobante_no_existe"));
+            Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
+            var noteLines = BuildNoteLines(invoice, await LinesAsync(c, tx, invoiceId), [new NoteLineDraft(Amount: amount, Description: description)]);
+            return await IssueNoteAsync(c, tx, now, NoteKinds.Debit, invoice, reason, noteLines, null);
+        }, ct);
+    }
+
+    /// <summary>
+    /// La anulación rebaja exactamente lo que queda del comprobante. Si antes hubo descuentos o débitos, las líneas ya no
+    /// coinciden con ese saldo: se rebaja como un importe, con la categoría de impuesto del comprobante.
+    /// </summary>
+    private static async Task<List<NoteLine>> VoidLinesAsync(SqliteConnection c, SqliteTransaction tx, InvoiceRow invoice,
+        IReadOnlyList<InvoiceLineRow> invoiceLines, List<NoteLine> lines)
+    {
+        var regime = await TaxRegimeAsync(c, tx);
+        var total = TaxCalculator.Calculate(lines.Select(l => new TaxableLine(l.Total, l.TaxCode)), regime, invoice.CurrencyCode).Total;
+        if (total == invoice.Creditable)
+            return lines;
+        var taxCode = invoiceLines.Select(l => l.TaxCode).FirstOrDefault(t => t is not null) ?? TaxCategories.Standard;
+        var currency = VortexApi.Suite.Money.Currencies.Get(invoice.CurrencyCode);
+        // Con precios sin impuesto (EE. UU.) el importe de la línea es la base: se quita el impuesto del saldo.
+        var amount = regime.PricesIncludeTax ? invoice.Creditable : currency.Round(invoice.Creditable / (1 + regime.RateOf(taxCode)));
+        return [new NoteLine(null, T("info.anulacion_de", invoice.Number), 1, amount, amount, taxCode)];
+    }
+
+    private static List<NoteLine> BuildNoteLines(InvoiceRow invoice, IReadOnlyList<InvoiceLineRow> invoiceLines, IReadOnlyList<NoteLineDraft> drafts)
+    {
+        var currency = VortexApi.Suite.Money.Currencies.Get(invoice.CurrencyCode);
+        // Un importe libre lleva la categoría de impuesto del comprobante (la de su primera línea).
+        var taxCode = invoiceLines.Select(l => l.TaxCode).FirstOrDefault(t => t is not null) ?? TaxCategories.Standard;
+        var result = new List<NoteLine>();
+        foreach (var group in drafts.GroupBy(d => d.InvoiceLineNo))
+        {
+            if (group.Key is { } no)
+            {
+                var line = invoiceLines.FirstOrDefault(l => l.LineNo == no);
+                Require(line is not null, T("error.una_de_las_lineas_no"));
+                var quantity = group.Sum(d => d.Quantity);
+                Require(quantity > 0, T("error.las_cantidades_deben_ser_mayores"));
+                Require(quantity <= line!.Returnable, T("error.de_solo_se_puede_rebajar", line.Description, line.Returnable));
+                var total = quantity == line.Returnable && line.CreditedQty == 0 ? line.Total : currency.Round(line.Total * quantity / line.Quantity);
+                result.Add(new NoteLine(line.ItemId, line.Description, quantity, line.UnitPrice, total, line.TaxCode ?? taxCode, no));
+                continue;
+            }
+            foreach (var d in group)
+            {
+                Require(d.Amount > 0, T("error.el_monto_debe_ser_mayor"));
+                Require(!string.IsNullOrWhiteSpace(d.Description), T("error.describe_el_importe_de_la_nota"));
+                var amount = currency.Round(d.Amount);
+                result.Add(new NoteLine(null, d.Description!.Trim(), 1, amount, amount, taxCode));
+            }
+        }
+        return result;
+    }
+
+    private async Task<string> IssueNoteAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string kind, InvoiceRow invoice,
+        string reason, IReadOnlyList<NoteLine> lines, string? description)
+    {
+        var breakdown = TaxCalculator.Calculate(lines.Select(l => new TaxableLine(l.Total, l.TaxCode)), await TaxRegimeAsync(c, tx),
+            invoice.CurrencyCode);
+        if (kind == NoteKinds.Credit)
+        {
+            // Un céntimo de tolerancia: al devolver lo que queda de varias líneas el redondeo puede diferir del saldo.
+            var minor = 1m / (decimal)Math.Pow(10, VortexApi.Suite.Money.Currencies.Get(invoice.CurrencyCode).Decimals);
+            Require(breakdown.Total <= invoice.Creditable + minor, T("error.la_nota_supera_lo_que_queda", invoice.Creditable));
+        }
+
+        var id = Guid.NewGuid();
+        var number = await DocumentNumbers.NextNoteAsync(c, tx, kind, invoice.Kind, Context.DeviceTag);
+        var e = new InvoiceNoteIssued(id, number, invoice.Id, invoice.Number, invoice.CustomerId, reason, now, invoice.CurrencyCode,
+            breakdown.Net, breakdown.Tax, breakdown.Total, lines, Clean(description), invoice.SaleId, invoice.OrderId);
+        await InsertNoteAsync(c, tx, kind, e, "local", Context.UserName);
+        await Outbox.EnqueueEventAsync(c, tx, now, kind == NoteKinds.Credit ? SuiteEvents.CreditNoteIssued : SuiteEvents.DebitNoteIssued, e,
+            subjectType: "invoice", subjectId: invoice.Number, id: id);
+        await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", invoice.Id, number,
+            $"{(kind == NoteKinds.Credit ? "Nota de crédito" : "Nota de débito")} ({reason}) de {invoice.Number} por {breakdown.Total:0.##} {invoice.CurrencyCode}");
+        return number;
+    }
+
+    public async Task<IReadOnlyList<InvoiceNoteRow>> GetNotesAsync(Guid? invoiceId = null, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await c.QueryAsync("""
+            SELECT n.*, i.number AS invoice_number, p.name AS customer_name
+            FROM invoice_notes n LEFT JOIN invoices i ON i.id = n.invoice_id LEFT JOIN parties p ON p.id = n.customer_id
+            WHERE $invoice IS NULL OR n.invoice_id = $invoice ORDER BY n.issued_at DESC
+            """, ReadNote, null, ("$invoice", invoiceId));
+    }
+
+    public async Task<IReadOnlyList<NoteLine>> GetNoteLinesAsync(Guid noteId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await c.QueryAsync("SELECT * FROM invoice_note_lines WHERE note_id = $id ORDER BY line_no", r => new NoteLine(
+            r.GuidOrNull("item_id"), r.Str("description"), r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total"), r.StrOrNull("tax_code"),
+            r.IsDBNull(r.GetOrdinal("invoice_line_no")) ? null : r.Int("invoice_line_no")), null, ("$id", noteId));
+    }
+
+    // ---------- Anulación ----------
+
+    /// <summary>
+    /// Anula un comprobante sin cobros ni notas (emitido por error). El pedido o la venta de caja quedan libres para emitir
+    /// otro. Si ya tiene cobros o notas, se corrige con una nota de crédito.
+    /// </summary>
+    public Task VoidAsync(Guid invoiceId, string reason, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.VoidInvoice);
+        Require(!string.IsNullOrWhiteSpace(reason), T("error.escribe_el_motivo_de_la_anulacion"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var invoice = await GetAsync(c, tx, invoiceId);
+            Require(invoice is not null, T("error.el_comprobante_no_existe"));
+            Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
+            Require(invoice.CanVoid, T("error.tiene_cobros_o_notas_emite_nota"));
+            var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId);
+            await MarkVoidedAsync(c, tx, now, e);
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
+                id: DeterministicId.From("invoice_void", invoiceId));
+            await AuditAsync(c, tx, now, AuditActions.Voided, "invoice", invoiceId, invoice.Number, reason.Trim());
+            return 0;
+        }, ct);
+    }
+
+    // ---------- Antigüedad de saldos y estado de cuenta ----------
+
+    /// <summary>Saldos pendientes por cliente y moneda, repartidos por días de vencido (a la fecha de hoy).</summary>
+    public async Task<IReadOnlyList<AgingRow>> GetAgingAsync(CancellationToken ct = default)
+    {
+        var today = DateOnly.ParseExact(Today(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        await using var c = await Db.OpenAsync(ct);
+        var open = await c.QueryAsync($"""
+            {Select} WHERE i.status = 'issued' AND i.total + i.debited - i.credited - i.paid > 0
+            """, Read);
+        return open
+            .GroupBy(i => (i.CustomerId, Name: i.CustomerName ?? T("info.clientes_varios"), i.CurrencyCode))
+            .Select(g =>
+            {
+                decimal Bucket(int fromDays, int toDays) => g.Where(i => DaysOverdue(i, today) is var d && d >= fromDays && d <= toDays).Sum(i => i.Balance);
+                return new AgingRow(g.Key.CustomerId, g.Key.Name, g.Key.CurrencyCode, Bucket(int.MinValue, 0), Bucket(1, 30), Bucket(31, 60),
+                    Bucket(61, 90), Bucket(91, int.MaxValue));
+            })
+            .OrderByDescending(r => r.Overdue).ThenByDescending(r => r.Total)
+            .ToList();
+    }
+
+    private static int DaysOverdue(InvoiceRow invoice, DateOnly today) => invoice.DueDate is { } due ? today.DayNumber - due.DayNumber : 0;
+
+    /// <summary>
+    /// Estado de cuenta de un cliente en una moneda: saldo anterior a <paramref name="from"/>, cargos (comprobantes y notas de
+    /// débito) y abonos (cobros y notas de crédito) del periodo con el saldo acumulado, y lo vencido a hoy.
+    /// </summary>
+    public async Task<CustomerStatement> GetStatementAsync(Guid customerId, string currencyCode, DateOnly from, DateOnly to,
+        CancellationToken ct = default)
+    {
+        Require(from <= to, T("error.la_fecha_inicial_no_puede"));
+        await using var c = await Db.OpenAsync(ct);
+        var customer = await c.FirstOrDefaultAsync("SELECT name, document_number FROM parties WHERE id = $id",
+            r => new { Name = r.Str("name"), Document = r.StrOrNull("document_number") }, null, ("$id", customerId));
+        Require(customer is not null, T("error.el_cliente_no_existe"));
+
+        var movements = await c.QueryAsync("""
+            SELECT issued_at AS at, 'invoice' AS kind, id, number, NULL AS reference, due_date, total AS charge, 0 AS credit
+            FROM invoices WHERE customer_id = $customer AND currency_code = $currency AND status = 'issued'
+            UNION ALL
+            SELECT n.issued_at, CASE n.kind WHEN 'debit' THEN 'debit_note' ELSE 'credit_note' END, n.id, n.number, i.number, NULL,
+                   CASE n.kind WHEN 'debit' THEN n.total ELSE 0 END, CASE n.kind WHEN 'debit' THEN 0 ELSE n.total END
+            FROM invoice_notes n JOIN invoices i ON i.id = n.invoice_id
+            WHERE n.customer_id = $customer AND n.currency_code = $currency AND i.status = 'issued'
+            UNION ALL
+            SELECT y.received_at, 'payment', y.id, y.number, i.number, NULL, 0, y.amount
+            FROM payments y LEFT JOIN invoices i ON i.id = y.invoice_id
+            WHERE y.customer_id = $customer AND y.currency_code = $currency
+            ORDER BY 1, 2
+            """, r => new
+            {
+                At = r.Time("at"), Kind = r.Str("kind"), Id = r.Guid("id"), Number = r.Str("number"), Reference = r.StrOrNull("reference"),
+                Due = r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : (DateOnly?)null,
+                Charge = r.Dec("charge"), Credit = r.Dec("credit"),
+            }, null, ("$customer", customerId), ("$currency", currencyCode));
+
+        var start = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), ErpClock.Offset);
+        var end = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), ErpClock.Offset);
+        var opening = movements.Where(m => m.At < start).Sum(m => m.Charge - m.Credit);
+        var balance = opening;
+        var entries = new List<StatementEntry>();
+        foreach (var m in movements.Where(m => m.At >= start && m.At < end))
+        {
+            balance += m.Charge - m.Credit;
+            entries.Add(new StatementEntry(m.At, m.Kind, m.Id, m.Number, m.Reference, m.Due, m.Charge, m.Credit, balance));
+        }
+
+        var today = DateOnly.ParseExact(Today(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var overdue = (await c.QueryAsync($"""
+            {Select} WHERE i.customer_id = $customer AND i.currency_code = $currency AND i.status = 'issued'
+              AND i.total + i.debited - i.credited - i.paid > 0
+            """, Read, null, ("$customer", customerId), ("$currency", currencyCode)))
+            .Where(i => i.IsOverdue(today)).Sum(i => i.Balance);
+        return new CustomerStatement(customerId, customer!.Name, customer.Document, currencyCode, from, to, opening, entries, balance, overdue,
+            Clock.GetUtcNow());
+    }
+
+    /// <summary>Monedas en que el cliente tiene movimientos (para elegir el estado de cuenta).</summary>
+    public async Task<IReadOnlyList<string>> GetCustomerCurrenciesAsync(Guid customerId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await c.QueryAsync("""
+            SELECT currency_code FROM invoices WHERE customer_id = $id UNION SELECT currency_code FROM payments WHERE customer_id = $id
+            ORDER BY 1
+            """, r => r.Str("currency_code"), null, ("$id", customerId));
+    }
+
     // ---------- Consultas ----------
 
     public async Task<PagedResult<InvoiceRow>> GetInvoicesAsync(InvoiceQuery q, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
         const string where = """
-            WHERE ($kind IS NULL OR i.kind = $kind) AND ($unpaid IS NULL OR (i.total - i.paid > 0) = $unpaid)
+            WHERE ($kind IS NULL OR i.kind = $kind)
+              AND ($unpaid IS NULL OR (i.status = 'issued' AND i.total + i.debited - i.credited - i.paid > 0) = $unpaid)
               AND ($customer IS NULL OR i.customer_id = $customer)
               AND ($search IS NULL OR i.number LIKE $like OR p.name LIKE $like OR p.document_number LIKE $like)
             """;
@@ -142,9 +394,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     public async Task<IReadOnlyList<InvoiceLineRow>> GetLinesAsync(Guid invoiceId, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        return await c.QueryAsync("SELECT * FROM invoice_lines WHERE invoice_id = $id ORDER BY line_no", r => new InvoiceLineRow(
-            r.Int("line_no"), r.GuidOrNull("item_id"), r.Str("description"), r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total")),
-            null, ("$id", invoiceId));
+        return await LinesAsync(c, null, invoiceId);
     }
 
     public async Task<PagedResult<PaymentRow>> GetPaymentsAsync(Guid? invoiceId, int page, int pageSize, CancellationToken ct = default)
@@ -170,11 +420,11 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         await using var c = await Db.OpenAsync(ct);
         return await c.QueryAsync("""
             SELECT i.customer_id, COALESCE(p.name, 'Clientes varios') AS customer_name, COUNT(*) AS invoices,
-                   SUM(i.total - i.paid) AS balance,
-                   SUM(CASE WHEN i.due_date < $today THEN i.total - i.paid ELSE 0 END) AS overdue,
+                   SUM(i.total + i.debited - i.credited - i.paid) AS balance,
+                   SUM(CASE WHEN i.due_date < $today THEN i.total + i.debited - i.credited - i.paid ELSE 0 END) AS overdue,
                    MIN(i.due_date) AS oldest_due
             FROM invoices i LEFT JOIN parties p ON p.id = i.customer_id
-            WHERE i.total - i.paid > 0
+            WHERE i.status = 'issued' AND i.total + i.debited - i.credited - i.paid > 0
             GROUP BY i.customer_id ORDER BY overdue DESC, balance DESC
             """, r => new ReceivableRow(r.GuidOrNull("customer_id"), r.Str("customer_name"), r.Int("invoices"), r.Dec("balance"),
                 r.Dec("overdue"), r.StrOrNull("oldest_due") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : null),
@@ -184,7 +434,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     public async Task<PagedResult<PosSaleRow>> GetPosSalesAsync(bool uninvoicedOnly, int page, int pageSize, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        const string where = "WHERE ($only = 0 OR (s.invoice_id IS NULL AND s.status = 'completed'))";
+        var where = $"WHERE ($only = 0 OR (s.invoice_id IS NULL AND s.status = 'completed')){SiteFilterOrNull("s.site_id")}";
         var total = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM pos_sales s {where}", null, ("$only", uninvoicedOnly));
         var rows = await c.QueryAsync($"{SelectSales} {where} ORDER BY s.created_at DESC LIMIT $limit OFFSET $offset", ReadSale, null,
             ("$only", uninvoicedOnly), ("$limit", pageSize), ("$offset", (page - 1) * pageSize));
@@ -241,7 +491,63 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     internal static Task ApplySaleReturnedAsync(SqliteConnection c, SqliteTransaction tx, SaleReturned e) =>
         c.ExecAsync("UPDATE pos_sales SET returned = returned + $total WHERE id = $id", tx, ("$id", e.SaleId), ("$total", Math.Abs(e.Total)));
 
+    /// <summary>Nota emitida en otro equipo del ERP. Idempotente por Id de la nota.</summary>
+    internal static async Task ApplyNoteIssuedAsync(SqliteConnection c, SqliteTransaction tx, string kind, InvoiceNoteIssued e)
+    {
+        if (await c.ScalarAsync<long>("SELECT COUNT(*) FROM invoice_notes WHERE id = $id", tx, ("$id", e.NoteId)) > 0)
+            return;
+        await InsertNoteAsync(c, tx, kind, e, "remote", null);
+    }
+
+    /// <summary>Anulación hecha en otro equipo del ERP (Id de evento determinista: se aplica una vez).</summary>
+    internal static Task ApplyInvoiceVoidedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, InvoiceVoided e) =>
+        MarkVoidedAsync(c, tx, at, e);
+
     // ---------- Internos ----------
+
+    private static async Task InsertNoteAsync(SqliteConnection c, SqliteTransaction tx, string kind, InvoiceNoteIssued e, string origin,
+        string? userName)
+    {
+        await c.ExecAsync("""
+            INSERT INTO invoice_notes (id, number, kind, origin, invoice_id, customer_id, reason, description, issued_at, currency_code,
+                                       subtotal, tax, total, user_name)
+            VALUES ($id, $number, $kind, $origin, $invoice, $customer, $reason, $desc, $at, $currency, $subtotal, $tax, $total, $user)
+            """, tx, ("$id", e.NoteId), ("$number", e.Number), ("$kind", kind), ("$origin", origin), ("$invoice", e.InvoiceId),
+            ("$customer", e.CustomerId), ("$reason", e.Reason), ("$desc", e.Description), ("$at", e.IssuedAt), ("$currency", e.CurrencyCode),
+            ("$subtotal", e.Subtotal), ("$tax", e.Tax), ("$total", e.Total), ("$user", userName));
+        var lineNo = 0;
+        foreach (var l in e.Lines ?? [])
+        {
+            await c.ExecAsync("""
+                INSERT INTO invoice_note_lines (note_id, line_no, item_id, description, quantity, unit_price, total, tax_code, invoice_line_no)
+                VALUES ($id, $no, $item, $desc, $qty, $price, $total, $tax, $invoiceLine)
+                """, tx, ("$id", e.NoteId), ("$no", ++lineNo), ("$item", l.ItemId), ("$desc", l.Description), ("$qty", l.Quantity),
+                ("$price", l.UnitPrice), ("$total", l.Total), ("$tax", l.TaxCode), ("$invoiceLine", l.InvoiceLineNo));
+            if (kind == NoteKinds.Credit && l.InvoiceLineNo is { } invoiceLine)
+            {
+                await c.ExecAsync("UPDATE invoice_lines SET credited_qty = credited_qty + $qty WHERE invoice_id = $invoice AND line_no = $no", tx,
+                    ("$invoice", e.InvoiceId), ("$no", invoiceLine), ("$qty", l.Quantity));
+            }
+        }
+        await c.ExecAsync(kind == NoteKinds.Credit
+            ? "UPDATE invoices SET credited = credited + $total WHERE id = $id"
+            : "UPDATE invoices SET debited = debited + $total WHERE id = $id", tx, ("$id", e.InvoiceId), ("$total", e.Total));
+    }
+
+    /// <summary>Marca el comprobante como anulado y libera su pedido o venta de caja para emitir otro.</summary>
+    private static async Task MarkVoidedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, InvoiceVoided e)
+    {
+        await c.ExecAsync("""
+            UPDATE invoices SET status = 'voided', voided_at = $at, void_reason = $reason WHERE id = $id AND status = 'issued'
+            """, tx, ("$id", e.InvoiceId), ("$at", at), ("$reason", e.Reason));
+        await c.ExecAsync("UPDATE sales_orders SET invoice_id = NULL WHERE invoice_id = $id", tx, ("$id", e.InvoiceId));
+        await c.ExecAsync("UPDATE pos_sales SET invoice_id = NULL WHERE invoice_id = $id", tx, ("$id", e.InvoiceId));
+    }
+
+    private static InvoiceNoteRow ReadNote(SqliteDataReader r) => new(
+        r.Guid("id"), r.Str("number"), r.Str("kind"), r.Str("origin"), r.Guid("invoice_id"), r.StrOrNull("invoice_number"),
+        r.GuidOrNull("customer_id"), r.StrOrNull("customer_name"), r.Str("reason"), r.StrOrNull("description"), r.Time("issued_at"),
+        r.Str("currency_code"), r.Dec("subtotal"), r.Dec("tax"), r.Dec("total"), r.StrOrNull("user_name"));
 
     private static async Task InsertInvoiceAsync(SqliteConnection c, SqliteTransaction tx, InvoiceIssued e, string origin, string? userName)
     {
@@ -273,7 +579,9 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             ("$invoice", e.InvoiceId), ("$sale", e.SaleId), ("$amount", e.Amount), ("$currency", e.CurrencyCode), ("$method", e.Method),
             ("$ref", e.Reference), ("$at", at), ("$user", userName));
         if (e.InvoiceId is { } invoice)
-            await c.ExecAsync("UPDATE invoices SET paid = MIN(total, paid + $amount) WHERE id = $id", tx, ("$id", invoice), ("$amount", e.Amount));
+            // Tope: lo que vale el comprobante con sus notas (un cobro repetido de otro equipo no lo pasa). Nunca baja lo cobrado.
+            await c.ExecAsync("UPDATE invoices SET paid = MAX(paid, MIN(total + debited - credited, paid + $amount)) WHERE id = $id", tx,
+                ("$id", invoice), ("$amount", e.Amount));
     }
 
     /// <summary>Categoría de impuesto de cada artículo (la del hub; sin dato, tasa general).</summary>
@@ -300,7 +608,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         r.Guid("id"), r.Str("number"), r.Str("kind"), r.Str("origin"), r.GuidOrNull("customer_id"), r.StrOrNull("customer_name"),
         r.StrOrNull("customer_document"), r.GuidOrNull("order_id"), r.GuidOrNull("sale_id"), r.Time("issued_at"),
         r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : null,
-        r.Str("currency_code"), r.Dec("subtotal"), r.Dec("tax"), r.Dec("total"), r.Dec("paid"), r.StrOrNull("user_name"));
+        r.Str("currency_code"), r.Dec("subtotal"), r.Dec("tax"), r.Dec("total"), r.Dec("paid"), r.StrOrNull("user_name"),
+        r.Str("status"), r.Dec("credited"), r.Dec("debited"), r.TimeOrNull("voided_at"), r.StrOrNull("void_reason"));
+
+    internal static Task<List<InvoiceLineRow>> LinesAsync(SqliteConnection c, SqliteTransaction? tx, Guid invoiceId) =>
+        c.QueryAsync("SELECT * FROM invoice_lines WHERE invoice_id = $id ORDER BY line_no", r => new InvoiceLineRow(
+            r.Int("line_no"), r.GuidOrNull("item_id"), r.Str("description"), r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total"),
+            r.StrOrNull("tax_code"), r.Dec("credited_qty")), tx, ("$id", invoiceId));
 
     private const string SelectSales = """
         SELECT s.*, t.name AS site_name, p.name AS customer_name, i.number AS invoice_number

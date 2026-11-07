@@ -77,6 +77,10 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
     public string UserName => Session?.User.FullName ?? "";
     public string DeviceTag => DeviceIdentity.Tag(_deviceId);
 
+    /// <summary>Sedes asignadas en el hub (<c>Access.SiteIds</c>). Los administradores de la organización ven todas.</summary>
+    public IReadOnlyList<Guid> SiteIds =>
+        Session is { } s && s.User.Role is not ("OrgAdmin" or "PlatformAdmin") ? s.Access.SiteIds ?? [] : [];
+
     public Guid? DefaultSiteId =>
         Session is { } s && Preferences.Default.Get<string?>(DefaultSiteKey(s), null) is { } id && Guid.TryParse(id, out var g) ? g : null;
 

@@ -11,6 +11,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <!-- PDF del estado de cuenta, sin dependencias nativas (el mismo que usa el CRM para sus cotizaciones). -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- PDFsharp trae System.Security.Cryptography.Pkcs 8.0.1, con vulnerabilidades conocidas: se fuerza la versión corregida. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <!-- SDK del hub desde el feed local (ver nuget.config y scripts/pack-sdk.*): siempre la versión más alta. -->
     <PackageReference Include="VortexApi.Client" Version="0.*-*" />
     <!-- Base común de la suite: impuestos por país, monedas, regiones, permisos, auditoría e idiomas. -->
@@ -20,6 +24,8 @@
   <ItemGroup>
     <!-- Textos de la interfaz por idioma (los usa la app con TextCatalog; las pruebas verifican que estén completos). -->
     <EmbeddedResource Include="Texts\*.json" LogicalName="VortexErp.Core.Texts.%(Filename)%(Extension)" />
+    <!-- Fuentes Open Sans (licencia OFL, ver Resources/Fonts/OFL.txt) para que el PDF salga igual en todas las plataformas. -->
+    <EmbeddedResource Include="Resources\Fonts\*.ttf" LogicalName="VortexErp.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

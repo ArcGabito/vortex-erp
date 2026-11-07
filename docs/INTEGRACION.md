@@ -27,10 +27,14 @@ La copia local solo se actualiza desde el feed, por `id` y `version`; un alta qu
 - Roles del ERP (`session.Access.Role`): `consulta` (sin rol asignado), `facturador` (pedidos, cotizaciones,
   comprobantes y cobros), `compras` (órdenes de compra), `contador` (comprobantes, cobros y auditoría) y
   `administrador` (todo, también artículos y sedes). OrgAdmin y PlatformAdmin del hub son administradores.
+  Las notas de crédito y débito las emiten `facturador` y `contador`; anular un comprobante, solo `contador` y
+  `administrador`.
+- Sedes por usuario: con sedes asignadas en el hub (`Access.SiteIds`), el usuario solo crea pedidos y compras en ellas y
+  solo ve los pedidos, compras y ventas de caja de sus sedes (los documentos sin sede se ven siempre).
 
 ## Datos propios del ERP
 
-Pedidos, comprobantes, cobros y órdenes de compra, más lo que informan los demás sistemas: ventas de caja del POS,
+Pedidos, comprobantes con sus notas de crédito y débito, cobros y órdenes de compra, más lo que informan los demás sistemas: ventas de caja del POS,
 cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 
 ## Eventos (versión 1)
@@ -43,6 +47,9 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 | `invoice.issued` | Al emitir una factura o boleta | Id del comprobante |
 | `payment.received` | Al registrar un cobro | Id del cobro |
 | `purchase_order.created` | Al crear una orden de compra | Id de la orden |
+| `credit_note.issued` | Al emitir una nota de crédito (anulación, devolución, descuento, corrección) | Id de la nota |
+| `debit_note.issued` | Al emitir una nota de débito (intereses, aumento de valor, penalidad) | Id de la nota |
+| `invoice.voided` | Al anular un comprobante sin cobros ni notas | `DeterministicId("invoice_void", invoiceId)` |
 
 Extensiones de v1 (campos agregados, ninguno quitado):
 
@@ -50,6 +57,18 @@ Extensiones de v1 (campos agregados, ninguno quitado):
 - `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja) y `lines`.
 - `payment.received`: `number` y `reference`.
 - `purchase_order.created`: `number`, `currencyCode`, `total` y `expectedAt`.
+
+Contenido de los eventos nuevos (propuestos al hub):
+
+- `credit_note.issued` / `debit_note.issued`: `noteId`, `number`, `invoiceId`, `invoiceNumber`, `customerId`, `reason`
+  (`void`, `return`, `discount`, `correction`, `interest`, `increase`, `penalty`), `issuedAt`, `currencyCode`, `subtotal`,
+  `tax`, `total`, `lines` (con `invoiceLineNo` en las devoluciones), `description`, `saleId` y `orderId`.
+- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId` y `orderId`. El pedido o la venta de caja quedan libres para
+  emitir otro comprobante.
+
+El saldo de un comprobante es total + notas de débito − notas de crédito − cobrado; si queda negativo es saldo a favor
+del cliente. Las notas usan la serie del comprobante que modifican con su propia correlación (`F3F0-000001` de nota de
+crédito es distinta de la factura `F3F0-000001`).
 
 ### Qué consume el ERP
 
@@ -63,7 +82,7 @@ Extensiones de v1 (campos agregados, ninguno quitado):
 | `shipment.dispatched` (WMS) | Marca el pedido como despachado con el transportista y la guía |
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
-| `invoice.issued`, `payment.received`, `purchase_order.created` (otro equipo ERP) | Ver abajo |
+| `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
 
 - Cada evento se aplica una sola vez (`processed_events`), en la misma transacción que su efecto.
 - `schemaVersion` distinto de 1 o `data` ilegible se registran como ignorados y no traban el feed.
@@ -84,5 +103,8 @@ prefijo (`PED-3F0C-000012`, `COB-…`, `OC-…`) y su propia serie de comprobant
 
 - Cancelar un pedido o una orden de compra no se replica a otros equipos: el catálogo v1 no tiene `order.cancelled`
   ni `purchase_order.cancelled`. Según la sección 10 de la guía, se propondrá en el hub.
-- No hay notas de crédito ni anulación de comprobantes, ni envío a SUNAT (facturación electrónica).
+- No hay envío a SUNAT (facturación electrónica): las notas y anulaciones se registran en el ERP y se informan con la
+  localización fiscal (fase 7 de la hoja de ruta).
+- Si un equipo anula un comprobante sin conexión mientras otro le registra un cobro, al sincronizar queda anulado con el
+  cobro registrado: revisar en el estado de cuenta del cliente y devolver o aplicar el cobro.
 - Las ventas de caja con devoluciones no se facturan desde aquí: se emite el comprobante por lo que quedó desde un pedido.
