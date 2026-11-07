@@ -25,6 +25,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 - `docs/ROADMAP.md`: hoja de ruta para competir con Odoo, SAP Business One, Business Central y NetSuite.
 
 ### Changed
+- `docs/ROADMAP.md` pasa a ser la guía de requisitos empresariales: cada requisito (`ERP-xx`) con su estado y
+  la fase que lo cubre, y cada fase con su criterio de terminado, propuestas al hub y decisiones pendientes.
 - **Morado .NET como color de la suite:** el naranja de la marca (`#FF5B14`) pasa a `#512BD4`, el morado de .NET,
   en el acento de `app.css`, el logo, el ícono de la app, la pantalla de inicio, la barra de título y Android. La portada
   del inicio de sesión se muestra en tonos morados con `filter: hue-rotate`. Los colores de estado no cambian.
