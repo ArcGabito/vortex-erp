@@ -75,7 +75,7 @@
                         <hr />
                         <a href="configuracion"><Icon Name="settings" Size="18" />@T("topbar.configuracion")</a>
                         <button @onclick="OpenRepoAsync"><Icon Name="external" Size="18" />@T("nav.contribuir")</button>
-                        <button class="danger" @onclick="Session.SignOutAsync"><Icon Name="logout" Size="18" />@T("topbar.cerrar_sesion")</button>
+                        <button class="danger" @onclick="() => Session.SignOutAsync()"><Icon Name="logout" Size="18" />@T("topbar.cerrar_sesion")</button>
                     </div>
                 }
             </div>
