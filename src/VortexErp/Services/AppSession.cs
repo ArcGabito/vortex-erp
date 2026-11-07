@@ -137,6 +137,7 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
             BuildClient();
             var session = await _sessions!.LoginAsync(email.Trim(), password, DeviceInfo.Current.Name,
                 DeviceInfo.Current.Platform.ToString());
+            AdoptUserLanguage(session);
             SignedOutReason = null;
             await StartAsync(session);
             return null;
@@ -380,6 +381,29 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
             await ApplyRegionAsync();
         Changed?.Invoke();
         DataChanged?.Invoke();
+        await SaveLanguageInHubAsync();
+    }
+
+    /// <summary>El idioma guardado en el hub sigue al usuario: al entrar en un equipo nuevo se usa ese.</summary>
+    private static void AdoptUserLanguage(VortexSession session)
+    {
+        if (session.User.Language is { Length: > 0 } language)
+            Preferences.Default.Set(LanguageKey, VortexApi.Suite.Regional.Languages.Normalize(language));
+    }
+
+    /// <summary>Guarda el idioma en el hub para los demás sistemas y equipos; sin conexión queda solo en este equipo.</summary>
+    private async Task SaveLanguageInHubAsync()
+    {
+        if (Session is null || _sessions is not { } sessions || _client is not { } client)
+            return;
+        try
+        {
+            await sessions.WithAccessTokenAsync(token => client.SetLanguageAsync(token, LanguagePreference));
+        }
+        catch (Exception ex) when (ex is VortexApiException or HttpRequestException or TaskCanceledException)
+        {
+            logger.LogInformation(ex, "El idioma quedó solo en este equipo");
+        }
     }
 
     /// <summary>Idioma (el elegido en este equipo o el del país) y formatos de fecha, número y moneda de la empresa.</summary>
