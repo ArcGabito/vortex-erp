@@ -1,0 +1,129 @@
+name: Microsoft Store
+
+# Empaqueta Vortex ERP como MSIX para la Microsoft Store. La Store firma el paquete con su certificado (gratis),
+# así que la app se instala sin la advertencia de SmartScreen. Guía: docs/MICROSOFT-STORE.md.
+#
+# - En un PR que toca el empaquetado: solo verifica que el MSIX se genera (identidad de prueba, sin enviar).
+# - Con una etiqueta vX.Y.Z o a mano: genera el .msixupload con la identidad de Partner Center y, si están
+#   configuradas las credenciales de la API de la Store, crea el envío.
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/store.yml
+      - scripts/store-manifest.ps1
+      - src/VortexErp/Platforms/Windows/**
+      - src/VortexErp/VortexErp.csproj
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Versión X.Y.Z (debe ser mayor que la última enviada a la Store)
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  HUB_REPO: https://github.com/ArcGabito/vortex-api
+  HUB_REF: main
+  PROJECT: src/VortexErp/VortexErp.csproj
+  MANIFEST: src/VortexErp/Platforms/Windows/Package.appxmanifest
+
+jobs:
+  msix:
+    name: MSIX (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: SDK del hub
+        shell: bash
+        run: |
+          git -c core.autocrlf=false clone --depth 1 --branch "$HUB_REF" "$HUB_REPO" "$RUNNER_TEMP/vortex-api"
+          VORTEX_API_DIR="$RUNNER_TEMP/vortex-api" scripts/pack-sdk.sh
+
+      - name: Workloads de MAUI
+        run: dotnet workload restore ${{ env.PROJECT }}
+
+      - name: Versión e identidad
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $release = $env:GITHUB_EVENT_NAME -ne 'pull_request'
+          $version = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } elseif ($env:GITHUB_REF_NAME -like 'v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.0.1' }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "La versión debe ser X.Y.Z (llegó '$version')." }
+          if ($release -and -not $env:STORE_IDENTITY_NAME) {
+            throw 'Faltan las variables STORE_IDENTITY_NAME, STORE_PUBLISHER y STORE_PUBLISHER_DISPLAY_NAME (Partner Center → Identidad del producto). Ver docs/MICROSOFT-STORE.md.'
+          }
+          $name = if ($env:STORE_IDENTITY_NAME) { $env:STORE_IDENTITY_NAME } else { 'ArcGabito.VortexERP.Test' }
+          $publisher = if ($env:STORE_PUBLISHER) { $env:STORE_PUBLISHER } else { 'CN=ArcGabito' }
+          $display = if ($env:STORE_PUBLISHER_DISPLAY_NAME) { $env:STORE_PUBLISHER_DISPLAY_NAME } else { 'ArcGabito' }
+          ./scripts/store-manifest.ps1 -Manifest $env:MANIFEST -IdentityName $name -Publisher $publisher -PublisherDisplayName $display
+          "APP_VERSION=$version" | Out-File $env:GITHUB_ENV -Append
+
+      # ApplicationVersion=0: la Store exige que el cuarto número de la versión del paquete sea 0 (X.Y.Z.0).
+      - name: Publicar MSIX para la Store
+        run: >
+          dotnet publish ${{ env.PROJECT }} -c Release -f net10.0-windows10.0.19041.0
+          -p:RuntimeIdentifierOverride=win-x64
+          -p:WindowsPackageType=MSIX
+          -p:GenerateAppxPackageOnBuild=true
+          -p:AppxPackageSigningEnabled=false
+          -p:UapAppxPackageBuildMode=StoreUpload
+          -p:AppxSymbolPackageEnabled=false
+          -p:ApplicationDisplayVersion=${{ env.APP_VERSION }}
+          -p:ApplicationVersion=0
+          -p:AppxPackageDir=${{ runner.temp }}\msix\
+
+      - name: Paquetes generados
+        shell: pwsh
+        run: Get-ChildItem "$env:RUNNER_TEMP\msix" -Recurse -Include *.msix, *.msixupload | ForEach-Object { "$($_.Name)  $([math]::Round($_.Length / 1MB, 1)) MB" }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vortex-erp-msix-${{ env.APP_VERSION }}
+          path: |
+            ${{ runner.temp }}/msix/**/*.msixupload
+            ${{ runner.temp }}/msix/**/*.msix
+          if-no-files-found: error
+
+  submit:
+    name: Enviar a la Store
+    needs: msix
+    # Solo en publicaciones y cuando la API de la Store está configurada (si no, el .msixupload se sube a mano).
+    if: github.event_name != 'pull_request' && vars.STORE_PRODUCT_ID != ''
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: ${{ runner.temp }}/msix
+
+      - uses: microsoft/setup-msstore-cli@v1
+
+      - name: Credenciales de Partner Center
+        run: >
+          msstore reconfigure
+          --tenantId ${{ secrets.STORE_TENANT_ID }}
+          --sellerId ${{ secrets.STORE_SELLER_ID }}
+          --clientId ${{ secrets.STORE_CLIENT_ID }}
+          --clientSecret ${{ secrets.STORE_CLIENT_SECRET }}
+
+      - name: Crear el envío
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem "$env:RUNNER_TEMP\msix" -Recurse -Filter *.msixupload | Select-Object -First 1
+          if (-not $package) { throw 'No se encontró el .msixupload.' }
+          msstore publish $package.FullName -id ${{ vars.STORE_PRODUCT_ID }}

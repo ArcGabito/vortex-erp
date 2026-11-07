@@ -30,6 +30,11 @@ sin conexión y se integra con el resto de la suite a través del hub [vortex-ap
 Ninguno es obligatorio: sin CRM los pedidos se crean aquí, sin WMS no hay stock que valorizar y sin POS no hay ventas
 de caja. El detalle está en [docs/INTEGRACION.md](docs/INTEGRACION.md).
 
+## Instalar
+
+En Windows, Vortex ERP se instala desde la **Microsoft Store** (paquete MSIX firmado por Microsoft, sin advertencias de
+SmartScreen y con actualizaciones automáticas). Cómo se publica: [docs/MICROSOFT-STORE.md](docs/MICROSOFT-STORE.md).
+
 ## Empezar
 
 Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download) con el workload de MAUI
