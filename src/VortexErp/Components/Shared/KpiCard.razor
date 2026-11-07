@@ -1,0 +1,47 @@
+@* Indicador del panel: etiqueta en mayúsculas, cifra grande con unidad, mini barras de los últimos periodos (la
+   última, la del periodo en curso, resaltada) y pie con la variación contra el periodo anterior. *@
+<div class="kpi">
+    <div class="kpi-main">
+        <div>
+            <div class="kpi-label">@Label</div>
+            <div class="kpi-value">@Value @if (Unit is not null) { <span class="kpi-unit">@Unit</span> }</div>
+        </div>
+        @if (Series.Count > 1)
+        {
+            var max = Math.Max(Series.Max(), 0.0001m);
+            <div class="kpi-bars" aria-hidden="true">
+                @for (var i = 0; i < Series.Count; i++)
+                {
+                    var h = Math.Max(4, (int)(Series[i] / max * 100));
+                    <span class="@(i == Series.Count - 1 ? "now" : "")" style="height:@(h)%"></span>
+                }
+            </div>
+        }
+    </div>
+    <div class="kpi-foot">
+        <span class="kpi-info" title="@Hint"><Icon Name="alert" Size="12" /></span>
+        @if (Delta is { } d)
+        {
+            <span class="delta @(d == 0 ? "flat" : (d > 0) == UpIsGood ? "good" : "bad")">@(d > 0 ? "+" : "")@d.ToString("0.#", Fmt.Culture)%</span>
+        }
+        else
+        {
+            <span class="delta flat">—</span>
+        }
+        <span class="faint">@T("kpi.vs_periodo_anterior")</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public IReadOnlyList<decimal> Series { get; set; } = [];
+    [Parameter] public decimal? Delta { get; set; }
+    [Parameter] public bool UpIsGood { get; set; } = true;
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Variación del último valor contra el anterior (null si el anterior es cero).</summary>
+    public static decimal? Change(IReadOnlyList<decimal> series) =>
+        series.Count >= 2 && series[^2] != 0 ? Math.Round((series[^1] - series[^2]) / Math.Abs(series[^2]) * 100, 1) : null;
+}

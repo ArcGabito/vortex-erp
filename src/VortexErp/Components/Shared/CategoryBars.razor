@@ -1,0 +1,40 @@
+@* Barras delgadas por categoría: la oscura es el periodo elegido y la clara detrás, el periodo anterior. *@
+<div class="cat-bars">
+    @if (Rows.Count == 0)
+    {
+        <EmptyState Icon="layers" Title="@(T("home.sin_ventas_en_el_periodo"))" Text="@(T("home.las_ventas_por_categoria"))" />
+    }
+    else
+    {
+        var max = Math.Max(Rows.Max(r => Math.Max(r.Current, r.Previous)), 0.0001m);
+        <div class="cat-plot">
+            @foreach (var row in Rows.Take(12))
+            {
+                <div class="cat-col" title="@($"{Name(row)} · {Fmt.Money(row.Current, Currency)} ({T("home.antes")}: {Fmt.Money(row.Previous, Currency)})")">
+                    <span class="ghost" style="height:@((int)(row.Previous / max * 100))%"></span>
+                    <span class="bar" style="height:@(Math.Max(1, (int)(row.Current / max * 100)))%"></span>
+                </div>
+            }
+        </div>
+        <div class="cat-legend">
+            @foreach (var row in Rows.Take(4))
+            {
+                <div class="list-row">
+                    <span class="truncate">@Name(row)</span>
+                    <strong class="end">@Fmt.MoneyCompact(row.Current, Currency)</strong>
+                    @if (row.ChangePct is { } d)
+                    {
+                        <span class="delta @(d >= 0 ? "good" : "bad")">@(d > 0 ? "+" : "")@d.ToString("0.#", Fmt.Culture)%</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CategoryRevenue> Rows { get; set; } = [];
+    [Parameter] public string Currency { get; set; } = "PEN";
+
+    private static string Name(CategoryRevenue r) => r.Category == "" ? T("home.sin_categoria") : r.Category;
+}

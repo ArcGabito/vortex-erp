@@ -4,29 +4,34 @@
 
 <header class="topbar">
     <button class="btn btn-ghost icon-btn menu-btn" @onclick="OnMenu" aria-label="@(T("topbar.menu"))"><Icon Name="menu" /></button>
-    <div class="page-title"><SectionOutlet SectionName="page-title" /></div>
-
-    <form class="top-search" @onsubmit="Search" role="search">
-        <Icon Name="search" Size="18" />
-        <input placeholder="@(T("topbar.buscar_comprobante_cliente_ruc"))" @bind="_query" aria-label="@(T("topbar.buscar_comprobantes"))" />
-    </form>
+    <nav class="crumbs" aria-label="@(T("topbar.ruta"))">
+        <a href="">@T("topbar.inicio")</a>
+        <Icon Name="chevron-right" Size="14" Class="faint" />
+        <span class="page-title"><SectionOutlet SectionName="page-title" /></span>
+    </nav>
 
     <div class="spacer"></div>
 
-    <button class="sync-chip @ChipClass" @onclick="Session.SyncNow" title="@(T("topbar.sincronizar_ahora"))">
+    <form class="top-search" @onsubmit="Search" role="search">
+        <Icon Name="search" Size="16" />
+        <input placeholder="@(T("topbar.buscar"))" @bind="_query" aria-label="@(T("topbar.buscar_comprobantes"))" title="@(T("topbar.buscar_comprobante_cliente_ruc"))" />
+        <kbd>Ctrl K</kbd>
+    </form>
+
+    <button class="btn icon-btn sync-btn @ChipClass" @onclick="Session.SyncNow" title="@ChipText" aria-label="@ChipText">
         @if (Session.Sync.IsSyncing)
         {
             <span class="spinner sm"></span>
         }
         else
         {
+            <Icon Name="sync" Size="18" />
             <span class="led"></span>
         }
-        <span class="label">@ChipText</span>
     </button>
 
     <div class="menu-anchor">
-        <button class="btn icon-btn round bell" @onclick="() => _panel = _panel == Panel.Alerts ? Panel.None : Panel.Alerts" aria-label="@(T("topbar.notificaciones"))">
+        <button class="btn icon-btn bell" @onclick="() => _panel = _panel == Panel.Alerts ? Panel.None : Panel.Alerts" aria-label="@(T("topbar.notificaciones"))">
             <Icon Name="bell" />
             @if (HasAlerts)
             {
@@ -68,29 +73,10 @@
         }
     </div>
 
-    <div class="menu-anchor">
-        <button class="btn btn-ghost" style="padding:0;height:auto;border-radius:50%" @onclick="() => _panel = _panel == Panel.User ? Panel.None : Panel.User" aria-label="@(T("topbar.cuenta"))">
-            <Avatar Text="@Session.UserName" Size="44" Class="user" />
-        </button>
-        @if (_panel == Panel.User)
-        {
-            <div class="menu-backdrop" @onclick="() => _panel = Panel.None"></div>
-            <div class="menu" @onclick="() => _panel = Panel.None">
-                <div style="padding:10px 12px 8px">
-                    <div class="strong" style="font-weight:700">@Session.UserName</div>
-                    <div class="muted" style="font-size:12px">@Session.Session?.User.Email</div>
-                    <div class="faint" style="font-size:12px;margin-top:4px">@Session.Session?.Access.OrganizationName@(Session.Session?.Access.Role is { } role ? $" · {role}" : "")</div>
-                </div>
-                <hr />
-                <a href="configuracion"><Icon Name="settings" Size="18" />@T("topbar.configuracion")</a>
-                <button class="danger" @onclick="SignOutAsync"><Icon Name="logout" Size="18" />@T("topbar.cerrar_sesion")</button>
-            </div>
-        }
-    </div>
 </header>
 
 @code {
-    private enum Panel { None, Alerts, User }
+    private enum Panel { None, Alerts }
 
     [Parameter] public EventCallback OnMenu { get; set; }
 
@@ -168,8 +154,6 @@
         _panel = Panel.None;
         Nav.NavigateTo("configuracion");
     }
-
-    private Task SignOutAsync() => Session.SignOutAsync();
 
     public void Dispose()
     {

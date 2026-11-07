@@ -8,9 +8,19 @@
     <div class="app">
         <div class="sidebar-backdrop @(_menuOpen ? "open" : "")" @onclick="() => _menuOpen = false"></div>
         <aside class="sidebar @(_menuOpen ? "open" : "")">
-            <div class="brand"><Logo /></div>
+            <a class="workspace" href="configuracion" @onclick="() => _menuOpen = false">
+                <span class="workspace-mark"><Logo IconOnly Size="26" /></span>
+                <span class="two-line">
+                    <span class="t2">Vortex ERP</span>
+                    <span class="t1">@Session.Session?.Access.OrganizationName</span>
+                </span>
+                <Icon Name="chevron-down" Size="16" Class="faint" />
+            </a>
+
             <nav class="nav" @onclick="() => _menuOpen = false">
+                <div class="nav-section">@T("nav.principal")</div>
                 <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />@T("nav.panel")</NavLink>
+
                 <div class="nav-section">@T("nav.ventas")</div>
                 <NavLink class="nav-link" href="pedidos">
                     <Icon Name="clipboard" />@T("nav.pedidos")
@@ -45,11 +55,29 @@
                 <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />@T("nav.configuracion")</NavLink>
             </nav>
 
-            <div class="promo">
-                <Logo IconOnly Size="64" />
-                <h4 style="margin-top:8px">@T("nav.libre_de_codigo_abierto")</h4>
-                <p>@T("nav.vortex_erp_es_agpl_3")</p>
-                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">@T("nav.contribuir")</button>
+            <div class="menu-anchor user-anchor">
+                <button class="user-card" @onclick="() => _userMenu = !_userMenu" aria-label="@(T("topbar.cuenta"))">
+                    <span class="avatar-wrap"><Avatar Text="@Session.UserName" Size="36" Class="user" /><span class="presence @(Session.Connection == ConnectionState.Online ? "on" : "")"></span></span>
+                    <span class="two-line">
+                        <span class="t1">@Session.UserName</span>
+                        <span class="t2">@(Session.Session?.Access.Role ?? Session.Session?.Access.OrganizationName)</span>
+                    </span>
+                    <Icon Name="chevron-down" Size="16" Class="faint" />
+                </button>
+                @if (_userMenu)
+                {
+                    <div class="menu-backdrop" @onclick="() => _userMenu = false"></div>
+                    <div class="menu up" @onclick="() => { _userMenu = false; _menuOpen = false; }">
+                        <div style="padding:10px 12px 8px">
+                            <div style="font-weight:600">@Session.UserName</div>
+                            <div class="muted" style="font-size:12px">@Session.Session?.User.Email</div>
+                        </div>
+                        <hr />
+                        <a href="configuracion"><Icon Name="settings" Size="18" />@T("topbar.configuracion")</a>
+                        <button @onclick="OpenRepoAsync"><Icon Name="external" Size="18" />@T("nav.contribuir")</button>
+                        <button class="danger" @onclick="() => Session.SignOutAsync()"><Icon Name="logout" Size="18" />@T("topbar.cerrar_sesion")</button>
+                    </div>
+                }
             </div>
         </aside>
 
@@ -65,7 +93,7 @@
 }
 
 @code {
-    private bool _menuOpen;
+    private bool _menuOpen, _userMenu;
     private int _toInvoice, _overdue;
     private ErrorBoundary? _boundary;
 
