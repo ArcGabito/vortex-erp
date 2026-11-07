@@ -1,0 +1,96 @@
+@* Gráfico de bloques: cada columna es un periodo apilado en cuadritos; los oscuros son la serie A (facturado), los
+   grises la serie B (caja) y los claros el espacio libre hasta el máximo. Al pasar el mouse se marca la columna. *@
+<div class="block-chart">
+    <div class="block-axis">
+        @for (var i = Ticks; i >= 0; i--)
+        {
+            <span>@Fmt.Compact(_max * i / Ticks)</span>
+        }
+    </div>
+    <div class="block-plot" @onmouseleave="() => _hover = null">
+        <svg viewBox="0 0 @(Columns.Count * Step) @(Rows * Step)" preserveAspectRatio="none" role="img" aria-label="@AriaLabel">
+            @for (var c = 0; c < Columns.Count; c++)
+            {
+                var col = Columns[c];
+                var a = Cells(col.A);
+                var ab = Math.Max(a, Cells(col.A + col.B));
+                var index = c;
+                <g @onmouseenter="() => _hover = index">
+                    <rect x="@(c * Step)" y="0" width="@Step" height="@(Rows * Step)" fill="transparent" />
+                    @for (var r = 0; r < Rows; r++)
+                    {
+                        var tone = r < a ? "a" : r < ab ? "b" : "e";
+                        <rect class="cell @tone" x="@(c * Step + 0.6)" y="@((Rows - 1 - r) * Step + 0.6)" width="@(Step - 1.2)" height="@(Step - 1.2)" rx="0.8" />
+                    }
+                </g>
+            }
+            @if (_hover is { } h)
+            {
+                <line class="hover-line" x1="@(h * Step + Step / 2.0)" x2="@(h * Step + Step / 2.0)" y1="0" y2="@(Rows * Step)" />
+            }
+        </svg>
+        @if (_hover is { } hv && hv < Columns.Count)
+        {
+            var col = Columns[hv];
+            var left = (hv + 0.5) / Columns.Count * 100;
+            <div class="block-tip" style="left:@(left.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;@(left > 70 ? "transform:translateX(-105%)" : "transform:translateX(8px)")">
+                <div class="tip-head">@col.Title</div>
+                <div class="tip-row"><span class="dot a"></span>@LabelA <strong>@Fmt.Compact(col.A)</strong></div>
+                <div class="tip-row"><span class="dot b"></span>@LabelB <strong>@Fmt.Compact(col.B)</strong></div>
+            </div>
+        }
+        <div class="block-labels">
+            @for (var c = 0; c < Columns.Count; c++)
+            {
+                if (Columns[c].Group is { } g)
+                {
+                    <span style="left:@(((double)c / Columns.Count * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%" class="@(_hover is { } x && _groupStart[x] == c ? "on" : "")">@g</span>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <param name="Group">Etiqueta del eje si esta columna empieza un grupo (mes, semana o año); null si no.</param>
+    public sealed record Column(string Title, decimal A, decimal B, string? Group);
+
+    private const int Step = 10;
+    private const int Ticks = 4;
+
+    [Parameter, EditorRequired] public IReadOnlyList<Column> Columns { get; set; } = [];
+    [Parameter] public int Rows { get; set; } = 14;
+    [Parameter] public string LabelA { get; set; } = "";
+    [Parameter] public string LabelB { get; set; } = "";
+    [Parameter] public string? AriaLabel { get; set; }
+
+    private int? _hover;
+    private decimal _max = 1;
+    private int[] _groupStart = [];
+
+    protected override void OnParametersSet()
+    {
+        var top = Columns.Count == 0 ? 0 : Columns.Max(c => c.A + c.B);
+        _max = NiceCeiling(top);
+        if (_hover >= Columns.Count)
+            _hover = null;
+        // Columna en que empieza el grupo de cada columna, para resaltar su etiqueta al pasar el mouse.
+        _groupStart = new int[Columns.Count];
+        for (var i = 0; i < Columns.Count; i++)
+            _groupStart[i] = Columns[i].Group is not null || i == 0 ? i : _groupStart[i - 1];
+    }
+
+    private int Cells(decimal value) => value <= 0 ? 0 : Math.Max(1, (int)Math.Round(value / _max * Rows));
+
+    /// <summary>Redondea el máximo hacia arriba a 1, 2, 2.5 o 5 × 10^n para que el eje tenga cifras limpias.</summary>
+    private static decimal NiceCeiling(decimal value)
+    {
+        if (value <= 0)
+            return 1;
+        var magnitude = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)value)));
+        foreach (var step in new[] { 1m, 2m, 2.5m, 5m, 10m })
+            if (value <= step * magnitude)
+                return step * magnitude;
+        return 10 * magnitude;
+    }
+}

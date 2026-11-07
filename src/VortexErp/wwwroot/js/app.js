@@ -7,3 +7,15 @@ window.vortex = {
     },
     focus: (el) => { if (el) el.focus(); },
 };
+
+// Ctrl K / ⌘ K: ir al buscador de la barra superior.
+document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        const input = document.querySelector(".top-search input");
+        if (input) {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    }
+});

@@ -89,6 +89,148 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         return list;
     }
 
+    // ---------- Panel: series, categorías y transacciones ----------
+
+    /// <summary>Inicio (en hora de la empresa) del periodo que contiene <paramref name="day"/>. Las semanas empiezan el lunes.</summary>
+    public static DateOnly PeriodStart(DateOnly day, TrendGrain grain) => grain switch
+    {
+        TrendGrain.Month => new DateOnly(day.Year, day.Month, 1),
+        TrendGrain.Week => day.AddDays(-(((int)day.DayOfWeek + 6) % 7)),
+        _ => day,
+    };
+
+    public static DateOnly NextPeriod(DateOnly start, TrendGrain grain) => grain switch
+    {
+        TrendGrain.Month => start.AddMonths(1),
+        TrendGrain.Week => start.AddDays(7),
+        _ => start.AddDays(1),
+    };
+
+    /// <summary>Los últimos <paramref name="periods"/> periodos, terminando en el actual (incluido aunque esté en curso).</summary>
+    public async Task<IReadOnlyList<TrendPoint>> GetTrendAsync(TrendGrain grain, int periods, CancellationToken ct = default)
+    {
+        var today = Today();
+        var starts = new List<DateOnly> { PeriodStart(today, grain) };
+        while (starts.Count < periods)
+        {
+            var previous = starts[0];
+            starts.Insert(0, grain switch
+            {
+                TrendGrain.Month => previous.AddMonths(-1),
+                TrendGrain.Week => previous.AddDays(-7),
+                _ => previous.AddDays(-1),
+            });
+        }
+        var from = ToUtc(starts[0]);
+        var to = ToUtc(NextPeriod(starts[^1], grain));
+
+        await using var c = await Db.OpenAsync(ct);
+        var invoices = await c.QueryAsync(
+            "SELECT issued_at, total FROM invoices WHERE sale_id IS NULL AND issued_at >= $from AND issued_at < $to",
+            r => (At: r.Time("issued_at"), Amount: r.Dec("total")), null, ("$from", from), ("$to", to));
+        var sales = await c.QueryAsync(
+            "SELECT created_at, total - returned AS net FROM pos_sales WHERE status = 'completed' AND created_at >= $from AND created_at < $to",
+            r => (At: r.Time("created_at"), Amount: r.Dec("net")), null, ("$from", from), ("$to", to));
+        var orders = await c.QueryAsync(
+            "SELECT created_at FROM sales_orders WHERE status <> 'cancelled' AND created_at >= $from AND created_at < $to",
+            r => r.Time("created_at"), null, ("$from", from), ("$to", to));
+        // Primera compra de cada cliente, en todo el historial.
+        var firsts = await c.QueryAsync("""
+            SELECT MIN(at) AS first_at FROM (
+                SELECT customer_id, issued_at AS at FROM invoices WHERE customer_id IS NOT NULL
+                UNION ALL
+                SELECT customer_id, created_at FROM pos_sales WHERE customer_id IS NOT NULL AND status = 'completed')
+            GROUP BY customer_id HAVING MIN(at) >= $from AND MIN(at) < $to
+            """, r => r.Time("first_at"), null, ("$from", from), ("$to", to));
+
+        var index = starts.Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i);
+        int Slot(DateTimeOffset at) => index.GetValueOrDefault(PeriodStart(LocalDay(at), grain), -1);
+        var invoiced = new decimal[periods];
+        var pos = new decimal[periods];
+        var orderCount = new int[periods];
+        var newCustomers = new int[periods];
+        var documents = new int[periods];
+        foreach (var (at, amount) in invoices)
+            if (Slot(at) is var i and >= 0) { invoiced[i] += amount; documents[i]++; }
+        foreach (var (at, amount) in sales)
+            if (Slot(at) is var i and >= 0) { pos[i] += amount; documents[i]++; }
+        foreach (var at in orders)
+            if (Slot(at) is var i and >= 0) orderCount[i]++;
+        foreach (var at in firsts)
+            if (Slot(at) is var i and >= 0) newCustomers[i]++;
+
+        return starts.Select((s, i) => new TrendPoint(s, invoiced[i], pos[i], orderCount[i], newCustomers[i], documents[i])).ToList();
+    }
+
+    /// <summary>
+    /// Ingresos por categoría de artículo entre <paramref name="from"/> y <paramref name="to"/> (fechas de la empresa,
+    /// <paramref name="to"/> incluido) y en el periodo anterior del mismo largo. Por líneas: no descuenta devoluciones de caja.
+    /// </summary>
+    public async Task<IReadOnlyList<CategoryRevenue>> GetRevenueByCategoryAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var days = to.DayNumber - from.DayNumber + 1;
+        var prevFrom = from.AddDays(-days);
+        await using var c = await Db.OpenAsync(ct);
+        async Task<Dictionary<string, decimal>> TotalsAsync(DateOnly start, DateOnly end)
+        {
+            var rows = await c.QueryAsync("""
+                SELECT COALESCE(NULLIF(it.category, ''), '') AS category, SUM(x.total) AS total FROM (
+                    SELECT l.item_id, l.total FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+                    WHERE i.sale_id IS NULL AND i.issued_at >= $from AND i.issued_at < $to
+                    UNION ALL
+                    SELECT l.item_id, l.total FROM pos_sale_lines l JOIN pos_sales s ON s.id = l.sale_id
+                    WHERE s.status = 'completed' AND s.created_at >= $from AND s.created_at < $to) x
+                LEFT JOIN items it ON it.id = x.item_id
+                GROUP BY 1
+                """, r => (Category: r.Str("category"), Total: r.Dec("total")), null,
+                ("$from", ToUtc(start)), ("$to", ToUtc(end.AddDays(1))));
+            return rows.ToDictionary(r => r.Category, r => r.Total);
+        }
+        var current = await TotalsAsync(from, to);
+        var previous = await TotalsAsync(prevFrom, from.AddDays(-1));
+        return current.Keys.Union(previous.Keys)
+            .Select(k => new CategoryRevenue(k, current.GetValueOrDefault(k), previous.GetValueOrDefault(k)))
+            .Where(r => r.Current > 0 || r.Previous > 0)
+            .OrderByDescending(r => r.Current).ThenBy(r => r.Category)
+            .ToList();
+    }
+
+    /// <summary>Últimos comprobantes con su estado de cobro (pagado, parcial, pendiente o vencido).</summary>
+    public async Task<IReadOnlyList<RecentTransaction>> GetRecentTransactionsAsync(string? search = null, int limit = 8,
+        CancellationToken ct = default)
+    {
+        var today = Today();
+        await using var c = await Db.OpenAsync(ct);
+        return await c.QueryAsync("""
+            SELECT i.id, i.number, i.kind, i.total, i.paid, i.due_date, i.issued_at, i.currency_code, p.name AS customer_name,
+                   (SELECT description FROM invoice_lines WHERE invoice_id = i.id ORDER BY line_no LIMIT 1) AS first_line,
+                   (SELECT COUNT(*) FROM invoice_lines WHERE invoice_id = i.id) AS lines,
+                   (SELECT COALESCE(SUM(quantity), 0) FROM invoice_lines WHERE invoice_id = i.id) AS quantity
+            FROM invoices i LEFT JOIN parties p ON p.id = i.customer_id
+            WHERE $search IS NULL OR i.number LIKE $like OR p.name LIKE $like
+            ORDER BY i.issued_at DESC LIMIT $limit
+            """, r =>
+            {
+                var total = r.Dec("total");
+                var paid = r.Dec("paid");
+                var due = r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : (DateOnly?)null;
+                var status = paid >= total ? TransactionStatuses.Paid
+                    : due < today ? TransactionStatuses.Overdue
+                    : paid > 0 ? TransactionStatuses.Partial
+                    : TransactionStatuses.Pending;
+                return new RecentTransaction(r.Guid("id"), r.Str("number"), r.Str("kind"), r.StrOrNull("customer_name"),
+                    r.StrOrNull("first_line"), r.Int("lines"), r.Dec("quantity"), total, Math.Max(0, total - paid), status,
+                    r.Time("issued_at"), r.Str("currency_code"));
+            }, null, ("$search", Clean(search)), ("$like", Like(search)), ("$limit", limit));
+    }
+
+    private DateOnly Today() => LocalDay(Clock.GetUtcNow());
+
+    private static DateOnly LocalDay(DateTimeOffset at) => DateOnly.FromDateTime(at.ToOffset(ErpClock.Offset).DateTime);
+
+    private static DateTimeOffset ToUtc(DateOnly day) =>
+        new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), ErpClock.Offset).ToUniversalTime();
+
     // Ingresos = comprobantes de pedidos (los de ventas de caja ya cuentan como venta) + ventas de caja netas de devoluciones.
     private static async Task<decimal> RevenueAsync(Microsoft.Data.Sqlite.SqliteConnection c, DateTimeOffset from, DateTimeOffset to) =>
         await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(total), 0) FROM invoices WHERE sale_id IS NULL AND issued_at >= $from AND issued_at < $to",

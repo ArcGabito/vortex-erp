@@ -194,3 +194,42 @@ public sealed record MonthRevenue(DateOnly Month, decimal Invoiced, decimal PosS
 public sealed record DashboardSummary(
     decimal RevenueMonth, decimal? RevenueChangePct, decimal Receivable, decimal Overdue, int OverdueInvoices, int OrdersOpen,
     int QuotesToConvert, int PurchasesOpen, decimal InventoryValue, int PosSalesToInvoice, string CurrencyCode);
+
+// ---------- Panel: tendencias, categorías y transacciones ----------
+
+/// <summary>Tamaño de cada periodo de una serie del panel.</summary>
+public enum TrendGrain
+{
+    Day,
+    Week,
+    Month,
+}
+
+/// <summary>
+/// Un periodo de la serie del panel. Ingresos = comprobantes de pedidos + ventas de caja netas de devoluciones.
+/// Clientes nuevos = los que hicieron su primera compra (comprobante o venta de caja) en el periodo.
+/// </summary>
+public sealed record TrendPoint(DateOnly Start, decimal Invoiced, decimal PosSales, int Orders, int NewCustomers, int Documents)
+{
+    public decimal Revenue => Invoiced + PosSales;
+    public decimal AverageTicket => Documents == 0 ? 0 : Math.Round(Revenue / Documents, 2);
+}
+
+/// <summary>Ingresos de una categoría de artículos en el periodo y en el periodo anterior del mismo largo.</summary>
+public sealed record CategoryRevenue(string Category, decimal Current, decimal Previous)
+{
+    public decimal? ChangePct => Previous > 0 ? Math.Round((Current - Previous) / Previous * 100, 1) : null;
+}
+
+public static class TransactionStatuses
+{
+    public const string Paid = "paid";
+    public const string Partial = "partial";
+    public const string Pending = "pending";
+    public const string Overdue = "overdue";
+}
+
+/// <summary>Comprobante reciente para la tabla del panel.</summary>
+public sealed record RecentTransaction(
+    Guid Id, string Number, string Kind, string? CustomerName, string? FirstLine, int Lines, decimal Quantity,
+    decimal Total, decimal Balance, string Status, DateTimeOffset IssuedAt, string CurrencyCode);

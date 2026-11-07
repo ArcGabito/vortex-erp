@@ -1,99 +1,177 @@
 @page "/"
 @inherits ErpPage
+@inject FileExporter Exporter
 
-<SectionContent SectionName="page-title">@T("home.panel")</SectionContent>
+<SectionContent SectionName="page-title">@T("home.resumen")</SectionContent>
 
-@if (_summary is { } s)
-{
-    <div class="stat-strip">
-        <StatTile Icon="wallet" Label="@(T("home.ingresos_del_mes"))" Value="@Fmt.MoneyCompact(s.RevenueMonth, s.CurrencyCode)" Delta="s.RevenueChangePct" Hint="@(s.RevenueChangePct is null ? null : T("home.vs_mes_pasado_la_fecha"))" />
-        <StatTile Icon="receipt" Label="@(T("home.por_cobrar"))" Value="@Fmt.MoneyCompact(s.Receivable, s.CurrencyCode)" Hint="@(s.Overdue > 0 ? T("home.vencido", (Fmt.MoneyCompact(s.Overdue, s.CurrencyCode))) : "nada vencido")" />
-        <StatTile Icon="clipboard" Label="@(T("home.por_facturar"))" Value="@Fmt.Compact(s.OrdersOpen + s.PosSalesToInvoice)" Hint="@(T("home.pedidos_de_caja", s.OrdersOpen, s.PosSalesToInvoice))" />
-        <StatTile Icon="truck" Label="@(T("home.compras_por_recibir"))" Value="@Fmt.Compact(s.PurchasesOpen)" />
-        <StatTile Icon="boxes" Label="@(T("home.inventario"))" Value="@Fmt.MoneyCompact(s.InventoryValue, s.CurrencyCode)" Hint="@(T("home.valorizado"))" />
-    </div>
-}
-
-<div class="page">
+<div class="page dashboard">
     <div class="page-head">
-        <div>
-            <h2>@T("home.hola", FirstName)</h2>
-            <p>@T("home.asi_van_las_cuentas_de", (Session.Session?.Access.OrganizationName))</p>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <a class="btn btn-outline" href="compras"><Icon Name="truck" Size="18" />@T("home.comprar")</a>
-            <a class="btn btn-dark" href="pedidos"><Icon Name="plus" Size="18" />@T("home.nuevo_pedido")</a>
+        <h2>@T("home.bienvenido_de_nuevo", FirstName)</h2>
+        <div class="head-actions">
+            <select class="select sm" value="@_grain" @onchange="OnGrainAsync" aria-label="@(T("home.periodo"))">
+                <option value="@TrendGrain.Day">@T("home.diario")</option>
+                <option value="@TrendGrain.Week">@T("home.semanal")</option>
+                <option value="@TrendGrain.Month">@T("home.mensual")</option>
+            </select>
+            <span class="chip-date"><Icon Name="clock" Size="16" />@Fmt.Date(Fmt.Today)</span>
+            <button class="btn btn-dark btn-sm" disabled="@(_kpis.Count == 0)" @onclick="ExportAsync"><Icon Name="download" Size="16" />@T("home.exportar_csv")</button>
         </div>
     </div>
 
-    <div class="grid-2">
-        <div class="card">
-            <div class="card-head">
-                <div>
-                    <h3>@T("home.ingresos_de_los_ultimos_6")</h3>
-                    <div class="sub">@T("home.comprobantes_de_pedidos_ventas_de")</div>
+    <div class="kpi-grid">
+        <KpiCard Label="@(T("home.ingresos"))" Value="@Fmt.MoneyCompact(Last(p => p.Revenue), Currency)" Series="Series(p => p.Revenue)"
+                 Delta="KpiCard.Change(Series(p => p.Revenue))" Hint="@(T("home.ingresos_ayuda"))" />
+        <KpiCard Label="@(T("home.pedidos"))" Value="@Fmt.Compact(Last(p => p.Orders))" Unit="@(T("home.pedidos_unidad"))" Series="Series(p => p.Orders)"
+                 Delta="KpiCard.Change(Series(p => p.Orders))" Hint="@(T("home.pedidos_ayuda"))" />
+        <KpiCard Label="@(T("home.clientes_nuevos"))" Value="@Fmt.Compact(Last(p => p.NewCustomers))" Unit="@(T("home.clientes_unidad"))" Series="Series(p => p.NewCustomers)"
+                 Delta="KpiCard.Change(Series(p => p.NewCustomers))" Hint="@(T("home.clientes_nuevos_ayuda"))" />
+        <KpiCard Label="@(T("home.ticket_promedio"))" Value="@Fmt.MoneyCompact(Last(p => p.AverageTicket), Currency)" Series="Series(p => p.AverageTicket)"
+                 Delta="KpiCard.Change(Series(p => p.AverageTicket))" Hint="@(T("home.ticket_promedio_ayuda"))" />
+    </div>
+
+    @if (_summary is { } a && a.QuotesToConvert + a.OrdersOpen + a.PosSalesToInvoice + a.OverdueInvoices > 0)
+    {
+        <div class="attention">
+            <span class="attention-title"><Icon Name="bell" Size="16" />@T("home.requiere_atencion")</span>
+            @if (a.QuotesToConvert > 0) { <a class="chip" href="pedidos">@T("home.cotizaciones_n", a.QuotesToConvert)</a> }
+            @if (a.OrdersOpen > 0) { <a class="chip" href="pedidos">@T("home.pedidos_por_facturar_n", a.OrdersOpen)</a> }
+            @if (a.PosSalesToInvoice > 0) { <a class="chip" href="comprobantes?caja=1">@T("home.ventas_sin_comprobante_n", a.PosSalesToInvoice)</a> }
+            @if (a.OverdueInvoices > 0) { <a class="chip bad" href="cobranzas">@T("home.vencidos_n", a.OverdueInvoices, Fmt.MoneyCompact(a.Overdue, Currency))</a> }
+        </div>
+    }
+
+    <div class="dash-grid">
+        <section class="panel">
+            <header class="panel-head">
+                <h3>@T("home.tendencia_de_ventas")</h3>
+            </header>
+            <div class="panel-body">
+                <div class="panel-toolbar">
+                    <div class="figure-line">
+                        <span class="muted">@T("home.ingresos_totales")</span>
+                        <strong class="mono-figure">@Fmt.Money(_trend.Sum(c => c.A + c.B), Currency)</strong>
+                    </div>
+                    <div class="legend-dots">
+                        <span><i class="dot a"></i>@T("home.facturado")</span>
+                        <span><i class="dot b"></i>@T("home.caja")</span>
+                    </div>
+                    <div class="segmented sm">
+                        <button class="@(_view == TrendView.Weekly ? "on" : "")" @onclick="() => SetViewAsync(TrendView.Weekly)">@T("home.semanal")</button>
+                        <button class="@(_view == TrendView.Monthly ? "on" : "")" @onclick="() => SetViewAsync(TrendView.Monthly)">@T("home.mensual")</button>
+                        <button class="@(_view == TrendView.Yearly ? "on" : "")" @onclick="() => SetViewAsync(TrendView.Yearly)">@T("home.anual")</button>
+                    </div>
                 </div>
-            </div>
-            <div class="card-body">
-                @if (_months.All(m => m.Invoiced + m.PosSales == 0))
+                @if (_trend.All(c => c.A + c.B == 0))
                 {
                     <EmptyState Icon="wallet" Title="@(T("home.aun_no_hay_ingresos"))" Text="@(T("home.factura_un_pedido_vende_en"))" />
                 }
                 else
                 {
-                    var max = _months.Max(m => m.Invoiced + m.PosSales);
-                    <div class="chart-bars" role="img" aria-label="@(T("home.ingresos_por_mes"))">
-                        @foreach (var m in _months)
-                        {
-                            var total = m.Invoiced + m.PosSales;
-                            <div class="col" title="@(T("home.facturado_en_caja", (Fmt.Money(m.Invoiced, Currency)), (Fmt.Money(m.PosSales, Currency))))">
-                                <span class="value">@Fmt.Compact(total)</span>
-                                <div class="stack" style="height:@((int)(total / max * 100))%">
-                                    <span class="pos" style="flex:@((double)m.PosSales)"></span>
-                                    <span class="inv" style="flex:@((double)m.Invoiced)"></span>
-                                </div>
-                                <span class="label">@m.Month.ToString("MMM", Fmt.Culture)</span>
-                            </div>
-                        }
-                    </div>
-                    <div class="legend"><span class="inv"></span>@T("home.pedidos_facturados") <span class="pos"></span>@T("home.ventas_de_caja")</div>
+                    <BlockChart Columns="_trend" LabelA="@(T("home.facturado"))" LabelB="@(T("home.caja"))" AriaLabel="@(T("home.tendencia_de_ventas"))" />
                 }
             </div>
-        </div>
+        </section>
 
-        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
-            <div class="card">
-                <div class="card-head">
-                    <div>
-                        <h3>@T("home.requiere_atencion")</h3>
-                        <div class="sub">@T("home.lo_que_espera_una_accion")</div>
+        <section class="panel">
+            <header class="panel-head">
+                <h3>@T("home.ingresos_por_categoria")</h3>
+            </header>
+            <div class="panel-body">
+                <div class="panel-toolbar">
+                    <div class="figure-line column">
+                        <span class="muted">@T("home.total_del_periodo")</span>
+                        <strong class="mono-figure">@Fmt.Money(_categories.Sum(c => c.Current), Currency)</strong>
                     </div>
+                    <select class="select sm" value="@_range" @onchange="OnRangeAsync" aria-label="@(T("home.periodo"))">
+                        <option value="month">@T("home.este_mes")</option>
+                        <option value="30">@T("home.ultimos_30_dias")</option>
+                        <option value="year">@T("home.este_ano")</option>
+                    </select>
                 </div>
-                <div class="card-body">
-                    @if (_summary is { } a)
-                    {
-                        <a class="list-row" href="pedidos">
-                            <Icon Name="star" Size="18" Class="faint" /><span>@T("home.cotizaciones_del_crm_por_convertir")</span><strong class="end">@a.QuotesToConvert</strong>
-                        </a>
-                        <a class="list-row" href="pedidos">
-                            <Icon Name="clipboard" Size="18" Class="faint" /><span>@T("home.pedidos_por_facturar")</span><strong class="end">@a.OrdersOpen</strong>
-                        </a>
-                        <a class="list-row" href="comprobantes?caja=1">
-                            <Icon Name="receipt" Size="18" Class="faint" /><span>@T("home.ventas_de_caja_sin_comprobante")</span><strong class="end">@a.PosSalesToInvoice</strong>
-                        </a>
-                        <a class="list-row" href="cobranzas">
-                            <Icon Name="alert" Size="18" Class="faint" /><span>@T("home.comprobantes_vencidos")</span><strong class="end @(a.OverdueInvoices > 0 ? "qty-neg" : "")">@a.OverdueInvoices</strong>
-                        </a>
-                    }
-                </div>
+                @if (Insight is { } insight)
+                {
+                    <div class="insight"><Icon Name="star" Size="16" /><span>@insight</span></div>
+                }
+                <CategoryBars Rows="_categories" Currency="@Currency" />
             </div>
-        </div>
+        </section>
     </div>
+
+    <section class="panel">
+        <header class="panel-head">
+            <h3>@T("home.transacciones_recientes")</h3>
+            <div class="panel-actions">
+                <div class="input-icon sm">
+                    <Icon Name="search" Size="16" />
+                    <input class="control" placeholder="@(T("home.buscar_transacciones"))" value="@_search" @oninput="OnSearchAsync" />
+                </div>
+                <a class="btn btn-sm" href="pedidos"><Icon Name="plus" Size="16" />@T("home.nuevo_pedido")</a>
+            </div>
+        </header>
+        <div class="panel-body flush">
+            @if (_recent.Count == 0)
+            {
+                <EmptyState Icon="receipt" Title="@(T("home.sin_transacciones"))" Text="@(T("home.los_comprobantes_emitidos_apareceran"))" />
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>@T("home.numero")</th>
+                                <th>@T("home.cliente")</th>
+                                <th>@T("home.detalle")</th>
+                                <th>@T("home.estado")</th>
+                                <th class="num">@T("home.cant")</th>
+                                <th class="num">@T("home.total")</th>
+                                <th class="num">@T("home.saldo")</th>
+                                <th class="actions-col"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tx in _recent)
+                            {
+                                <tr>
+                                    <td class="mono">@tx.Number</td>
+                                    <td class="strong">@(tx.CustomerName ?? T("home.cliente_varios"))</td>
+                                    <td class="muted">@tx.FirstLine@(tx.Lines > 1 ? $" +{tx.Lines - 1}" : "")</td>
+                                    <td><span class="pill @Tone(tx.Status)">@StatusText(tx.Status)</span></td>
+                                    <td class="num mono">@Fmt.Qty(tx.Quantity)</td>
+                                    <td class="num mono">@Fmt.Money(tx.Total, tx.CurrencyCode)</td>
+                                    <td class="num mono">@(tx.Balance > 0 ? Fmt.Money(tx.Balance, tx.CurrencyCode) : "—")</td>
+                                    <td class="actions-col">
+                                        <KebabMenu>
+                                            <a href="@($"comprobantes?q={Uri.EscapeDataString(tx.Number)}")"><Icon Name="eye" Size="18" />@T("home.ver_comprobante")</a>
+                                            @if (tx.Balance > 0)
+                                            {
+                                                <a href="cobranzas"><Icon Name="wallet" Size="18" />@T("home.registrar_cobro")</a>
+                                            }
+                                        </KebabMenu>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
 </div>
 
 @code {
+    private enum TrendView { Weekly, Monthly, Yearly }
+
     private DashboardSummary? _summary;
-    private IReadOnlyList<MonthRevenue> _months = [];
+    private IReadOnlyList<TrendPoint> _kpis = [];
+    private IReadOnlyList<BlockChart.Column> _trend = [];
+    private IReadOnlyList<CategoryRevenue> _categories = [];
+    private IReadOnlyList<RecentTransaction> _recent = [];
+    private TrendGrain _grain = TrendGrain.Month;
+    private TrendView _view = TrendView.Monthly;
+    private string _range = "month";
+    private string _search = "";
+    private CancellationTokenSource? _debounce;
 
     private string Currency => _summary?.CurrencyCode ?? "PEN";
     private string FirstName => Session.UserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
@@ -101,6 +179,153 @@
     protected override async Task LoadAsync()
     {
         _summary = await Erp.Reports.GetDashboardAsync();
-        _months = await Erp.Reports.GetMonthlyRevenueAsync();
+        await LoadKpisAsync();
+        await LoadTrendAsync();
+        await LoadCategoriesAsync();
+        _recent = await Erp.Reports.GetRecentTransactionsAsync(_search);
+    }
+
+    private async Task LoadKpisAsync() =>
+        _kpis = await Erp.Reports.GetTrendAsync(_grain, _grain == TrendGrain.Day ? 14 : 12);
+
+    private IReadOnlyList<decimal> Series(Func<TrendPoint, decimal> pick) => _kpis.Select(pick).ToList();
+    private IReadOnlyList<decimal> Series(Func<TrendPoint, int> pick) => _kpis.Select(p => (decimal)pick(p)).ToList();
+    private decimal Last(Func<TrendPoint, decimal> pick) => _kpis.Count == 0 ? 0 : pick(_kpis[^1]);
+    private decimal Last(Func<TrendPoint, int> pick) => _kpis.Count == 0 ? 0 : pick(_kpis[^1]);
+
+    /// <summary>Semanal: 12 semanas día por día. Mensual: 12 meses semana por semana. Anual: 3 años mes por mes.</summary>
+    private async Task LoadTrendAsync()
+    {
+        var (grain, periods) = _view switch
+        {
+            TrendView.Weekly => (TrendGrain.Day, 84),
+            TrendView.Yearly => (TrendGrain.Month, 36),
+            _ => (TrendGrain.Week, 53),
+        };
+        var points = await Erp.Reports.GetTrendAsync(grain, periods);
+        _trend = points.Select((p, i) =>
+        {
+            var previous = i > 0 ? points[i - 1].Start : (DateOnly?)null;
+            string? group = _view switch
+            {
+                TrendView.Weekly => p.Start.DayOfWeek == DayOfWeek.Monday || i == 0 ? p.Start.ToString("d MMM", Fmt.Culture) : null,
+                TrendView.Yearly => previous?.Year != p.Start.Year ? p.Start.Year.ToString() : null,
+                _ => previous?.Month != p.Start.Month ? p.Start.ToString("MMM", Fmt.Culture).ToUpper(Fmt.Culture) : null,
+            };
+            var title = grain switch
+            {
+                TrendGrain.Day => Fmt.Date(p.Start),
+                TrendGrain.Month => p.Start.ToString("MMMM yyyy", Fmt.Culture),
+                _ => T("home.semana_del", Fmt.Date(p.Start)),
+            };
+            return new BlockChart.Column(title, p.Invoiced, p.PosSales, group);
+        }).ToList();
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        var today = Fmt.Today;
+        var from = _range switch
+        {
+            "30" => today.AddDays(-29),
+            "year" => new DateOnly(today.Year, 1, 1),
+            _ => new DateOnly(today.Year, today.Month, 1),
+        };
+        _categories = await Erp.Reports.GetRevenueByCategoryAsync(from, today);
+    }
+
+    /// <summary>Lectura rápida del desglose: la categoría que más vende, su peso y cómo le fue contra el periodo anterior.</summary>
+    private string? Insight
+    {
+        get
+        {
+            var total = _categories.Sum(c => c.Current);
+            if (total <= 0 || _categories.FirstOrDefault() is not { } top)
+                return null;
+            var name = top.Category == "" ? T("home.sin_categoria") : top.Category;
+            var share = Math.Round(top.Current / total * 100);
+            return top.ChangePct is { } d
+                ? T("home.insight_con_cambio", name, share, (d > 0 ? "+" : "") + d.ToString("0.#", Fmt.Culture))
+                : T("home.insight", name, share);
+        }
+    }
+
+    private async Task OnGrainAsync(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<TrendGrain>(e.Value?.ToString(), out var grain))
+        {
+            _grain = grain;
+            await LoadKpisAsync();
+        }
+    }
+
+    private async Task SetViewAsync(TrendView view)
+    {
+        _view = view;
+        await LoadTrendAsync();
+    }
+
+    private async Task OnRangeAsync(ChangeEventArgs e)
+    {
+        _range = e.Value?.ToString() ?? "month";
+        await LoadCategoriesAsync();
+    }
+
+    private async Task OnSearchAsync(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _recent = await Erp.Reports.GetRecentTransactionsAsync(_search);
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private static string Tone(string status) => status switch
+    {
+        TransactionStatuses.Paid => "good",
+        TransactionStatuses.Overdue => "bad",
+        TransactionStatuses.Partial => "info",
+        _ => "warn",
+    };
+
+    private static string StatusText(string status) => status switch
+    {
+        TransactionStatuses.Paid => T("home.pagado"),
+        TransactionStatuses.Overdue => T("home.vencido_estado"),
+        TransactionStatuses.Partial => T("home.parcial"),
+        _ => T("home.pendiente"),
+    };
+
+    /// <summary>La serie de los indicadores en CSV (separador ; y decimales con punto, para Excel en cualquier idioma).</summary>
+    private async Task ExportAsync()
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine(string.Join(';', T("home.csv_periodo"), T("home.facturado"), T("home.caja"), T("home.ingresos"), T("home.pedidos"),
+            T("home.clientes_nuevos"), T("home.ticket_promedio")));
+        foreach (var p in _kpis)
+            csv.AppendLine(string.Join(';', p.Start.ToString("yyyy-MM-dd", inv), p.Invoiced.ToString(inv), p.PosSales.ToString(inv),
+                p.Revenue.ToString(inv), p.Orders, p.NewCustomers, p.AverageTicket.ToString(inv)));
+        try
+        {
+            var path = await Exporter.ExportAsync($"vortex-erp-panel-{Fmt.Today:yyyyMMdd}.csv", csv.ToString());
+            Toasts.Success(T("home.exportado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
     }
 }
