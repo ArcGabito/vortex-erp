@@ -45,10 +45,23 @@ public sealed class Toasts
 /// <summary>Exporta archivos: en escritorio los guarda en Documentos/Vortex ERP y los abre; en móvil, los comparte.</summary>
 public sealed class FileExporter
 {
+    /// <summary>Guarda y abre (o comparte) un archivo binario, como un PDF.</summary>
+    public async Task<string> ExportBytesAsync(string fileName, byte[] content, string contentType)
+    {
+        var cache = Path.Combine(FileSystem.CacheDirectory, fileName);
+        await File.WriteAllBytesAsync(cache, content);
+        return await OpenAsync(fileName, cache, contentType);
+    }
+
     public async Task<string> ExportAsync(string fileName, string content, string contentType = "text/csv")
     {
         var cache = Path.Combine(FileSystem.CacheDirectory, fileName);
         await File.WriteAllTextAsync(cache, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        return await OpenAsync(fileName, cache, contentType);
+    }
+
+    private static async Task<string> OpenAsync(string fileName, string cache, string contentType)
+    {
 #if WINDOWS || MACCATALYST
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Vortex ERP");
         Directory.CreateDirectory(folder);
@@ -141,6 +154,18 @@ public static class Fmt
     };
 
     public static string InvoiceKind(string kind) => kind == InvoiceKinds.Invoice ? T("fmt.factura") : T("fmt.boleta");
+
+    public static string NoteReason(string reason) => reason switch
+    {
+        NoteReasons.Void => T("fmt.motivo_anulacion"),
+        NoteReasons.Return => T("fmt.motivo_devolucion"),
+        NoteReasons.Discount => T("fmt.motivo_descuento"),
+        NoteReasons.Correction => T("fmt.motivo_correccion"),
+        NoteReasons.Interest => T("fmt.motivo_intereses"),
+        NoteReasons.Increase => T("fmt.motivo_aumento"),
+        NoteReasons.Penalty => T("fmt.motivo_penalidad"),
+        _ => reason,
+    };
 
     public static string Source(string source) => source switch
     {

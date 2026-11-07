@@ -12,6 +12,9 @@ public interface IErpContext
     /// <summary>Sede por defecto de los pedidos y compras (puede ser null).</summary>
     Guid? DefaultSiteId { get; }
 
+    /// <summary>Sedes asignadas al usuario en el hub (<c>Access.SiteIds</c>). Vacío: trabaja en todas.</summary>
+    IReadOnlyList<Guid> SiteIds => [];
+
     /// <summary>Rol efectivo del usuario en el ERP (<see cref="ErpPermissions"/>).</summary>
     string Role { get; }
 
@@ -113,17 +116,40 @@ public static class InvoiceKinds
     public const string Receipt = "boleta";
 }
 
+/// <summary>
+/// Comprobante. El saldo suma las notas de débito y resta las de crédito y lo cobrado; si queda negativo es saldo a favor
+/// del cliente. Un comprobante anulado no tiene saldo.
+/// </summary>
 public sealed record InvoiceRow(
     Guid Id, string Number, string Kind, string Origin, Guid? CustomerId, string? CustomerName, string? CustomerDocument,
     Guid? OrderId, Guid? SaleId, DateTimeOffset IssuedAt, DateOnly? DueDate, string CurrencyCode, decimal Subtotal, decimal Tax,
-    decimal Total, decimal Paid, string? UserName)
+    decimal Total, decimal Paid, string? UserName, string Status = InvoiceStatuses.Issued, decimal Credited = 0, decimal Debited = 0,
+    DateTimeOffset? VoidedAt = null, string? VoidReason = null)
 {
-    public decimal Balance => Total - Paid;
+    public bool IsVoided => Status == InvoiceStatuses.Voided;
+    public decimal Balance => IsVoided ? 0 : Total + Debited - Credited - Paid;
     public bool IsPaid => Balance <= 0;
     public bool IsOverdue(DateOnly today) => !IsPaid && DueDate < today;
+
+    /// <summary>Lo que todavía se puede rebajar con notas de crédito.</summary>
+    public decimal Creditable => IsVoided ? 0 : Total + Debited - Credited;
+
+    /// <summary>Solo se anula un comprobante sin cobros ni notas: si ya tiene, se corrige con una nota de crédito.</summary>
+    public bool CanVoid => !IsVoided && Paid == 0 && Credited == 0 && Debited == 0;
 }
 
-public sealed record InvoiceLineRow(int LineNo, Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total);
+public static class InvoiceStatuses
+{
+    public const string Issued = "issued";
+    public const string Voided = "voided";
+}
+
+public sealed record InvoiceLineRow(int LineNo, Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total,
+    string? TaxCode = null, decimal CreditedQty = 0)
+{
+    /// <summary>Cantidad que todavía se puede devolver con una nota de crédito.</summary>
+    public decimal Returnable => Quantity - CreditedQty;
+}
 
 public sealed record InvoiceQuery(
     string? Search = null, string? Kind = null, bool? Unpaid = null, Guid? CustomerId = null, int Page = 1, int PageSize = 15);
@@ -142,6 +168,89 @@ public static class PaymentMethods
 public sealed record PaymentRow(
     Guid Id, string Number, Guid? CustomerId, string? CustomerName, Guid? InvoiceId, string? InvoiceNumber, decimal Amount,
     string CurrencyCode, string Method, string? Reference, DateTimeOffset ReceivedAt, string? UserName);
+
+// ---------- Notas de crédito y débito ----------
+
+public static class NoteKinds
+{
+    public const string Credit = "credit";
+    public const string Debit = "debit";
+}
+
+/// <summary>
+/// Motivos de las notas, comunes a todos los países. El paquete de localización los traduce al código fiscal de cada
+/// uno (en Perú, catálogos 09 y 10 de SUNAT).
+/// </summary>
+public static class NoteReasons
+{
+    // Notas de crédito
+    /// <summary>Anulación de la operación: rebaja todo lo que queda del comprobante.</summary>
+    public const string Void = "void";
+
+    /// <summary>Devolución de artículos (por línea y cantidad).</summary>
+    public const string Return = "return";
+
+    /// <summary>Descuento o bonificación después de emitir.</summary>
+    public const string Discount = "discount";
+
+    /// <summary>Corrección de un error (precio, descripción).</summary>
+    public const string Correction = "correction";
+
+    // Notas de débito
+    /// <summary>Intereses por pago fuera de plazo.</summary>
+    public const string Interest = "interest";
+
+    /// <summary>Aumento del valor de la operación.</summary>
+    public const string Increase = "increase";
+
+    /// <summary>Penalidad u otro cargo.</summary>
+    public const string Penalty = "penalty";
+
+    public static readonly string[] CreditReasons = [Void, Return, Discount, Correction];
+    public static readonly string[] DebitReasons = [Interest, Increase, Penalty];
+}
+
+/// <summary>
+/// Línea de una nota. Con <c>InvoiceLineNo</c> devuelve esa cantidad de la línea del comprobante (al mismo precio); sin
+/// ella es un importe libre (descuento, corrección, interés) con impuesto incluido donde los precios lo incluyen.
+/// </summary>
+public sealed record NoteLineDraft(int? InvoiceLineNo = null, decimal Quantity = 0, decimal Amount = 0, string? Description = null);
+
+public sealed record InvoiceNoteRow(
+    Guid Id, string Number, string Kind, string Origin, Guid InvoiceId, string? InvoiceNumber, Guid? CustomerId, string? CustomerName,
+    string Reason, string? Description, DateTimeOffset IssuedAt, string CurrencyCode, decimal Subtotal, decimal Tax, decimal Total,
+    string? UserName);
+
+// ---------- Antigüedad de saldos y estado de cuenta ----------
+
+/// <summary>
+/// Saldo de un cliente en una moneda repartido por días de vencido: aún no vence, 1-30, 31-60, 61-90 y más de 90.
+/// </summary>
+public sealed record AgingRow(
+    Guid? CustomerId, string CustomerName, string CurrencyCode, decimal Current, decimal Days1To30, decimal Days31To60,
+    decimal Days61To90, decimal Over90)
+{
+    public decimal Total => Current + Days1To30 + Days31To60 + Days61To90 + Over90;
+    public decimal Overdue => Total - Current;
+}
+
+public static class StatementEntryKinds
+{
+    public const string Invoice = "invoice";
+    public const string CreditNote = "credit_note";
+    public const string DebitNote = "debit_note";
+    public const string Payment = "payment";
+}
+
+/// <summary>Movimiento del estado de cuenta: cargo (comprobante, nota de débito) o abono (cobro, nota de crédito).</summary>
+public sealed record StatementEntry(
+    DateTimeOffset At, string Kind, Guid DocumentId, string Number, string? Reference, DateOnly? DueDate, decimal Charge,
+    decimal Credit, decimal Balance);
+
+/// <summary>Estado de cuenta de un cliente en una moneda, entre dos fechas, con el saldo anterior y el final.</summary>
+public sealed record CustomerStatement(
+    Guid CustomerId, string CustomerName, string? CustomerDocument, string CurrencyCode, DateOnly From, DateOnly To,
+    decimal OpeningBalance, IReadOnlyList<StatementEntry> Entries, decimal ClosingBalance, decimal Overdue, DateTimeOffset GeneratedAt);
 
 /// <summary>Saldo por cliente: total pendiente y cuánto está vencido.</summary>
 public sealed record ReceivableRow(Guid? CustomerId, string CustomerName, int Invoices, decimal Balance, decimal Overdue, DateOnly? OldestDue);
@@ -227,6 +336,7 @@ public static class TransactionStatuses
     public const string Partial = "partial";
     public const string Pending = "pending";
     public const string Overdue = "overdue";
+    public const string Voided = "voided";
 }
 
 /// <summary>Comprobante reciente para la tabla del panel.</summary>

@@ -26,6 +26,12 @@ public static class ErpPermissions
 
     public const string ViewAudit = "audit.view";
 
+    /// <summary>Emitir notas de crédito y débito.</summary>
+    public const string IssueNote = "invoice.note";
+
+    /// <summary>Anular un comprobante sin cobros ni notas.</summary>
+    public const string VoidInvoice = "invoice.void";
+
     public const string ReadOnly = "consulta";
     public const string Billing = "facturador";
     public const string Purchasing = "compras";
@@ -33,9 +39,9 @@ public static class ErpPermissions
 
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(ReadOnly,
         (ReadOnly, []),
-        (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty]),
+        (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote]),
         (Purchasing, [CreatePurchase, CancelPurchase, CreateParty]),
-        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit]));
+        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -49,6 +55,8 @@ public static class ErpPermissions
         CreateParty => T("permiso.createparty"),
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),
+        IssueNote => T("permiso.issuenote"),
+        VoidInvoice => T("permiso.voidinvoice"),
         _ => permission,
     };
 }

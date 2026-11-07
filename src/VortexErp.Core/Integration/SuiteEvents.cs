@@ -11,6 +11,9 @@ public static class SuiteEvents
     public const string InvoiceIssued = "invoice.issued";
     public const string PaymentReceived = "payment.received";
     public const string PurchaseOrderCreated = "purchase_order.created";
+    public const string CreditNoteIssued = "credit_note.issued";
+    public const string DebitNoteIssued = "debit_note.issued";
+    public const string InvoiceVoided = "invoice.voided";
 
     // Consume el ERP
     public const string SaleCompleted = "sale.completed";
@@ -47,6 +50,22 @@ public sealed record InvoiceIssued(
 public sealed record PaymentReceived(
     Guid PaymentId, Guid? CustomerId, Guid? InvoiceId, Guid? SaleId, decimal Amount, string CurrencyCode, string Method,
     string? Number = null, string? Reference = null);
+
+/// <summary>
+/// <c>credit_note.issued</c> y <c>debit_note.issued</c>: nota vinculada a un comprobante. <c>reason</c> es un motivo común
+/// (<c>void</c>, <c>return</c>, <c>discount</c>, <c>correction</c>, <c>interest</c>, <c>increase</c>, <c>penalty</c>); en las
+/// líneas devueltas, <c>invoiceLineNo</c> indica la línea del comprobante.
+/// </summary>
+public sealed record InvoiceNoteIssued(
+    Guid NoteId, string Number, Guid InvoiceId, string? InvoiceNumber, Guid? CustomerId, string Reason, DateTimeOffset IssuedAt,
+    string CurrencyCode, decimal Subtotal, decimal Tax, decimal Total, IReadOnlyList<NoteLine>? Lines = null, string? Description = null,
+    Guid? SaleId = null, Guid? OrderId = null);
+
+public sealed record NoteLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null,
+    int? InvoiceLineNo = null);
+
+/// <summary><c>invoice.voided</c>: comprobante anulado (sin cobros ni notas). Id del evento determinista por comprobante.</summary>
+public sealed record InvoiceVoided(Guid InvoiceId, string? Number, string? Reason, Guid? SaleId = null, Guid? OrderId = null);
 
 public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal UnitCost);
 

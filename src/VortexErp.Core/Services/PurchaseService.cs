@@ -29,6 +29,7 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
                 ("$id", supplierId)) > 0, T("error.el_proveedor_no_existe"));
             var site = siteId ?? await DefaultSiteAsync(c, tx);
             Require(site is not null, T("error.elige_el_almacen_que_recibe"));
+            Require(CanUseSite(site!.Value), T("error.sede_no_asignada"));
 
             var id = Guid.NewGuid();
             var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Purchase, Context.DeviceTag);
@@ -59,8 +60,9 @@ public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimePro
     public async Task<PagedResult<PurchaseRow>> GetPurchasesAsync(string? search, string? status, int page, int pageSize, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        const string where = """
-            WHERE ($status IS NULL OR o.status = $status OR ($status = 'pending' AND o.status IN ('open', 'partial')))
+        var where = $"""
+            WHERE (1 = 1{SiteFilter("o.site_id")})
+              AND ($status IS NULL OR o.status = $status OR ($status = 'pending' AND o.status IN ('open', 'partial')))
               AND ($search IS NULL OR o.number LIKE $like OR p.name LIKE $like)
             """;
         var args = new (string, object?)[]

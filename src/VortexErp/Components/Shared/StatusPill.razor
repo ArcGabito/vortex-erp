@@ -13,7 +13,9 @@
         : (T("statuspill.abierto"), "warn");
 
     public static (string Text, string Tone) ForInvoice(InvoiceRow i, DateOnly today) =>
-        i.IsPaid ? (T("statuspill.pagado"), "good")
+        i.IsVoided ? (T("statuspill.anulado"), "neutral")
+        : i.Balance < 0 ? (T("statuspill.saldo_a_favor"), "info")
+        : i.IsPaid ? (T("statuspill.pagado"), "good")
         : i.IsOverdue(today) ? (T("statuspill.vencido"), "bad")
         : i.Paid > 0 ? (T("statuspill.pago_parcial"), "warn")
         : (T("statuspill.por_cobrar"), "info");
