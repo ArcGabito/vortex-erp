@@ -74,3 +74,7 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Removed
 - Plantilla inicial de .NET MAUI (XAML).
+
+### Fixed
+- Celular: los diálogos (detalle del comprobante, nuevo pedido) y los indicadores ya no se salen de la pantalla; las líneas
+  del pedido muestran el nombre del artículo con precio y cantidad debajo.
