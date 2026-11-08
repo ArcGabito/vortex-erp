@@ -1556,3 +1556,10 @@ table.data td { font-size: 13px; }
     .stat-value { flex-wrap: wrap; height: auto; }
     .stat-hint { white-space: normal; }
 }
+
+@media (max-width: 640px) {
+    /* En el celular la ruta muestra solo la página y ocupa el espacio libre. */
+    .topbar .crumbs { flex: 1; }
+    .topbar .crumbs > a, .topbar .crumbs > svg { display: none; }
+    .topbar .spacer { display: none; }
+}
