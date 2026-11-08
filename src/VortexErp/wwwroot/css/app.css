@@ -1522,3 +1522,37 @@ table.data td { font-size: 13px; }
     .segmented { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
     .segmented button { flex: none; }
 }
+
+/* El diálogo nunca es más ancho que la pantalla: la columna del fondo no crece con el contenido. */
+.modal-backdrop { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.modal { min-width: 0; }
+.line { grid-template-columns: minmax(0, 1fr) 110px 34px; }
+.line.with-price { grid-template-columns: minmax(0, 1fr) 100px 110px 34px; }
+
+@media (max-width: 640px) {
+    .modal-backdrop { padding: 12px; }
+    .modal-head, .modal-body, .modal-foot { padding-left: 18px; padding-right: 18px; }
+    /* Línea de documento: el artículo arriba; precio y cantidad debajo. */
+    .line.with-price { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; }
+    .line.with-price > :first-child { grid-column: 1 / -1; }
+    .line.with-price > :nth-child(4):empty { display: none; }
+}
+
+@media (max-width: 640px) {
+    /* En el celular, las cuadrículas de dos columnas (aunque tengan estilo en línea) pasan a una. */
+    .grid-2, .modal .grid-2 { grid-template-columns: minmax(0, 1fr) !important; }
+    .modal-foot { flex-wrap: wrap; }
+    .modal-foot > .btn { flex: 1 1 auto; }
+    .list-row .two-line .t2 { white-space: normal; }
+}
+
+.list-row .end { white-space: nowrap; }
+
+@media (max-width: 640px) {
+    /* Indicadores en 2 columnas que no se salen: el texto se recorta y la nota baja de línea. */
+    .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat, .stat > div { min-width: 0; }
+    .stat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stat-value { flex-wrap: wrap; height: auto; }
+    .stat-hint { white-space: normal; }
+}

@@ -187,5 +187,20 @@ internal static class Schema
             unit_price REAL NOT NULL, total REAL NOT NULL, tax_code TEXT, invoice_line_no INTEGER, PRIMARY KEY (note_id, line_no));
         CREATE INDEX ix_payments_customer ON payments (customer_id, received_at);
         """,
+        // 4: multimoneda. Tipos de cambio del hub (copia local para emitir y cobrar sin conexión); cada comprobante guarda
+        // el del día de emisión a la moneda de la empresa y cada cobro en otra moneda, el del día y la diferencia de cambio
+        // (en moneda de la empresa). Se borra el cursor de datos maestros para volver a bajarlos con sus tipos de cambio.
+        """
+        CREATE TABLE exchange_rates (
+            id TEXT PRIMARY KEY, date TEXT NOT NULL, from_currency TEXT NOT NULL, to_currency TEXT NOT NULL, rate REAL NOT NULL,
+            buy_rate REAL, sell_rate REAL, source TEXT, version INTEGER NOT NULL, is_deleted INTEGER NOT NULL DEFAULT 0);
+        CREATE INDEX ix_exchange_rates_pair ON exchange_rates (from_currency, to_currency, date);
+        ALTER TABLE invoices ADD COLUMN exchange_rate REAL;
+        ALTER TABLE payments ADD COLUMN exchange_rate REAL;
+        ALTER TABLE payments ADD COLUMN paid_amount REAL;
+        ALTER TABLE payments ADD COLUMN paid_currency TEXT;
+        ALTER TABLE payments ADD COLUMN fx_difference REAL;
+        DELETE FROM sync_cursors WHERE stream = 'master';
+        """,
     ];
 }

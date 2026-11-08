@@ -26,7 +26,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-03 | Comprobantes desde las ventas del POS | Hecho | — |
 | ERP-04 | Notas de crédito (devolución, descuento, anulación) y de débito | Hecho | 2 |
 | ERP-05 | Anulación de comprobantes con motivo, replicada | Hecho | 2 |
-| ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Pendiente | 2 |
+| ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Hecho | 2 |
 | ERP-07 | Listas de precios y descuentos por cliente | Pendiente | 3 |
 | ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Pendiente | 3 |
 | ERP-09 | Facturación de despachos parciales | Pendiente | 3 |
@@ -156,8 +156,13 @@ dólares se cobra en soles y la diferencia queda registrada; el CRM y el POS ven
 **Estado (2026-11):** 2a hecha: notas de crédito (anulación, devolución por líneas, descuento, corrección) y de débito
 vinculadas al comprobante, anulación de comprobantes sin cobros ni notas, antigüedad de saldos por cliente y moneda,
 estado de cuenta con PDF y sedes por usuario. Eventos `credit_note.issued`, `debit_note.issued` e `invoice.voided`
-(propuestos al hub). Pruebas en `NotesTests`. **Pendiente (2b):** multimoneda con el tipo de cambio del hub y
-diferencia de cambio (ERP-06); que el CRM y el POS muestren la anulación.
+(propuestos al hub). Pruebas en `NotesTests`.
+
+**Estado (2026-11), 2b:** hecha. Copia local de los tipos de cambio del hub; pedidos y comprobantes en otra moneda con el
+tipo de cambio del día guardado en el comprobante (de venta si el hub lo trae); cobro de un comprobante en otra moneda en
+la de la empresa, con la diferencia de cambio registrada; panel, ingresos y antigüedad de saldos en moneda de la empresa;
+tipos de cambio en Configuración y diferencia de cambio del mes en Cobranzas. Pruebas en `FxTests`. El CRM y el POS
+marcan la anulación de comprobantes (`invoice.voided`).
 
 ## Fase 3: ciclo de venta completo · M
 

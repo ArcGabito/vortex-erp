@@ -167,7 +167,7 @@
                     @foreach (var p in _payments)
                     {
                         <div class="list-row">
-                            <div class="two-line"><span class="t1">@p.Number</span><span class="t2">@Fmt.PaymentMethod(p.Method) · @Fmt.Date(p.ReceivedAt)@(p.Reference is null ? "" : $" · {p.Reference}")</span></div>
+                            <div class="two-line"><span class="t1">@p.Number</span><span class="t2">@Fmt.PaymentMethod(p.Method) · @Fmt.Date(p.ReceivedAt)@(p.Reference is null ? "" : $" · {p.Reference}")@PaidDetail(p)</span></div>
                             <strong class="end">@Fmt.Money(p.Amount, p.CurrencyCode)</strong>
                         </div>
                     }
@@ -176,6 +176,10 @@
                     <dt>@T("invoices.subtotal")</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
                     <dt>@T("invoices.impuesto")</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
                     <dt class="grand">@T("invoices.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd>
+                    @if (d.ExchangeRate is { } rate)
+                    {
+                        <dt>@T("invoices.tipo_de_cambio_emision")</dt><dd>@Fmt.Rate(rate) · @Fmt.Money(d.Total * rate, _company)</dd>
+                    }
                     @if (d.Debited > 0)
                     {
                         <dt>@T("invoices.notas_de_debito")</dt><dd>+@Fmt.Money(d.Debited, d.CurrencyCode)</dd>
@@ -239,10 +243,26 @@
 {
     <Modal Title="@(T("invoices.registrar_cobro"))" Subtitle="@(T("invoices.saldo", pay.Number, (Fmt.Money(pay.Balance, pay.CurrencyCode))))" Size="sm" Error="@_error" OnClose="() => _paying = null">
         <ChildContent>
+            @if (pay.CurrencyCode != _company && _payRate is { } today)
+            {
+                <div class="field">
+                    <label>@T("invoices.cobrar_en")</label>
+                    <div class="segmented">
+                        @foreach (var cur in new[] { pay.CurrencyCode, _company })
+                        {
+                            <button class="@(_payCurrency == cur ? "on" : "")" @onclick="() => SetPayCurrency(pay, cur)">@cur</button>
+                        }
+                    </div>
+                </div>
+            }
             <div class="field">
-                <label>@T("invoices.monto", Fmt.Symbol(pay.CurrencyCode))</label>
+                <label>@T("invoices.monto", Fmt.Symbol(_payCurrency))</label>
                 <input class="control" type="number" min="0" step="0.01" @bind="_amount" />
             </div>
+            @if (_payCurrency != pay.CurrencyCode && _payRate is { } rateToday)
+            {
+                <span class="muted" style="font-size:12.5px">@T("invoices.equivale_a", Fmt.Money(VortexApi.Suite.Money.Currencies.Get(pay.CurrencyCode).Round(_amount / rateToday), pay.CurrencyCode), Fmt.Rate(rateToday), Fmt.Rate(pay.ExchangeRate ?? rateToday))</span>
+            }
             <div class="field">
                 <label>@T("invoices.medio_de_pago")</label>
                 <select class="select" @bind="_method">
@@ -439,6 +459,7 @@
 
     protected override async Task LoadAsync()
     {
+        _company = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
         _posPending = (await Erp.Invoices.GetPosSalesAsync(uninvoicedOnly: true, 1, 1)).Total;
         if (_posTab)
             _sales = await Erp.Invoices.GetPosSalesAsync(uninvoicedOnly: true, _page, 15);
@@ -472,15 +493,35 @@
         _detail = invoice;
     }
 
-    private void StartPayment(InvoiceRow invoice)
+    private async Task StartPayment(InvoiceRow invoice)
     {
         _error = null;
         _amount = invoice.Balance;
+        _payCurrency = invoice.CurrencyCode;
+        _payRate = invoice.CurrencyCode == _company ? null : await Erp.Master.GetRateAsync(invoice.CurrencyCode, _company);
         _method = PaymentMethods.Transfer;
         _reference = null;
         _detail = null;
         _paying = invoice;
     }
+
+    private string _company = "PEN", _payCurrency = "PEN";
+    private decimal? _payRate;
+
+    /// <summary>Cobrar en la moneda del comprobante o en la de la empresa: el monto propuesto pasa a la otra moneda.</summary>
+    private void SetPayCurrency(InvoiceRow invoice, string currency)
+    {
+        if (currency == _payCurrency || _payRate is not { } rate)
+            return;
+        _payCurrency = currency;
+        _amount = currency == invoice.CurrencyCode
+            ? Math.Min(invoice.Balance, VortexApi.Suite.Money.Currencies.Get(currency).Round(_amount / rate))
+            : VortexApi.Suite.Money.Currencies.Get(currency).Round(_amount * rate);
+    }
+
+    private string PaidDetail(PaymentRow p) => p.PaidAmount is { } paid && p.PaidCurrency is { } cur
+        ? T("invoices.cobrado_en", Fmt.Money(paid, cur), Fmt.Rate(p.ExchangeRate ?? 0), Fmt.Money(p.FxDifference ?? 0, cur))
+        : "";
 
     private async Task PayAsync()
     {
@@ -488,7 +529,7 @@
             return;
         _busy = true;
         string? number = null;
-        _error = await TryAsync(async () => number = await Erp.Invoices.RegisterPaymentAsync(invoice.Id, _amount, _method, _reference));
+        _error = await TryAsync(async () => number = await Erp.Invoices.RegisterPaymentAsync(invoice.Id, _amount, _method, _reference, _payCurrency));
         _busy = false;
         if (_error is null)
         {

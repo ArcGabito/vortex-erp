@@ -127,6 +127,19 @@
                         }
                     </select>
                 </div>
+                @if (_rates.Count > 0)
+                {
+                    <div class="field">
+                        <label>@T("orders.moneda")</label>
+                        <select class="select" value="@n.Currency" @onchange="e => ChangeCurrency(n, e.Value?.ToString())">
+                            <option value="@_currency">@_currency</option>
+                            @foreach (var cur in _rates.Keys)
+                            {
+                                <option value="@cur">@cur · @T("orders.tipo_de_cambio", Fmt.Rate(_rates[cur]), _currency)</option>
+                            }
+                        </select>
+                    </div>
+                }
                 <div class="field">
                     <label>@T("orders.despachar_desde")</label>
                     <select class="select" @bind="n.SiteId">
@@ -138,9 +151,9 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => i.Price" Changed="StateHasChanged" />
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => PriceIn(i, n.Currency)" Changed="StateHasChanged" />
             <dl class="totals">
-                <dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
+                <dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), n.Currency)</dd>
             </dl>
         </ChildContent>
         <Footer>
@@ -224,6 +237,7 @@
     {
         public Guid? CustomerId { get; set; }
         public Guid? SiteId { get; set; }
+        public string Currency { get; set; } = "PEN";
         public List<LineEditor.LineDraft> Lines { get; } = [];
     }
 
@@ -276,7 +290,41 @@
         _error = null;
         _customers = await Erp.Master.GetPartyOptionsAsync(suppliers: false);
         _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
-        _new = new NewOrder { SiteId = Session.DefaultSiteId };
+        _rates = await ForeignRatesAsync();
+        _new = new NewOrder { SiteId = Session.DefaultSiteId, Currency = _currency };
+    }
+
+    /// <summary>Monedas con tipo de cambio del hub hacia la de la empresa: cuánto vale 1 unidad en la moneda de la empresa.</summary>
+    private Dictionary<string, decimal> _rates = [];
+
+    private async Task<Dictionary<string, decimal>> ForeignRatesAsync()
+    {
+        var rates = new Dictionary<string, decimal>();
+        foreach (var r in await Erp.Master.GetLatestExchangeRatesAsync())
+        {
+            var other = r.To == _currency ? r.From : r.From == _currency ? r.To : null;
+            if (other is not null && !rates.ContainsKey(other) && await Erp.Master.GetRateAsync(other, _currency) is { } rate)
+                rates[other] = rate;
+        }
+        return rates;
+    }
+
+    /// <summary>Precio de lista del artículo en la moneda del pedido (convertido por la moneda de la empresa).</summary>
+    private decimal? PriceIn(ItemRow item, string currency)
+    {
+        decimal? ToCompany(string cur) => cur == _currency ? 1m : _rates.TryGetValue(cur, out var r) ? r : null;
+        if (item.CurrencyCode == currency)
+            return item.Price;
+        return ToCompany(item.CurrencyCode) is { } from && ToCompany(currency) is { } to
+            ? VortexApi.Suite.Money.Currencies.Get(currency).Round(item.Price * from / to) : null;
+    }
+
+    /// <summary>Cambia la moneda del pedido y recalcula los precios de lista de las líneas.</summary>
+    private void ChangeCurrency(NewOrder n, string? currency)
+    {
+        n.Currency = currency ?? n.Currency;
+        foreach (var l in n.Lines)
+            l.Price = PriceIn(l.Item, n.Currency);
     }
 
     private async Task CreateAsync()
@@ -285,7 +333,7 @@
             return;
         _busy = true;
         string? number = null;
-        _error = await TryAsync(async () => number = await Erp.Orders.CreateAsync(customer, n.SiteId, n.Lines.Select(l => l.ToDocumentLine()).ToList(), _currency));
+        _error = await TryAsync(async () => number = await Erp.Orders.CreateAsync(customer, n.SiteId, n.Lines.Select(l => l.ToDocumentLine()).ToList(), n.Currency));
         _busy = false;
         if (_error is null)
         {

@@ -144,6 +144,30 @@
             </div>
 
             <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>@T("settings.tipos_de_cambio")</h3>
+                        <div class="sub">@T("settings.tipos_de_cambio_explica")</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_rates.Count == 0)
+                    {
+                        <span class="muted">@T("settings.sin_tipos_de_cambio")</span>
+                    }
+                    @foreach (var fx in _rates)
+                    {
+                        <div class="list-row">
+                            <div class="two-line">
+                                <span class="t1">1 @fx.From = @Fmt.Rate(fx.Rate) @fx.To</span>
+                                <span class="t2">@Fmt.Date(fx.Date)@(fx.Source is null ? "" : $" · {fx.Source}")@RateSides(fx)</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
                 <div class="card-head"><h3>@T("settings.acerca_de")</h3></div>
                 <div class="card-body">
                     <div class="list-row">
@@ -175,9 +199,15 @@
 
     protected override void OnInitialized() => Session.Changed += OnSessionChanged;
 
+    private IReadOnlyList<ExchangeRateRow> _rates = [];
+
+    private static string RateSides(ExchangeRateRow r) =>
+        r.BuyRate is null && r.SellRate is null ? "" : " · " + T("settings.compra_venta", Fmt.Rate(r.BuyRate ?? r.Rate), Fmt.Rate(r.SellRate ?? r.Rate));
+
     protected override async Task LoadAsync()
     {
         _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
+        _rates = await Erp.Master.GetLatestExchangeRatesAsync();
         _failed = await Session.GetFailedAsync();
     }
 

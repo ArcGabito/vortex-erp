@@ -13,12 +13,17 @@
         <a class="btn btn-dark" href="comprobantes"><Icon Name="receipt" Size="18" />@T("receivables.ir_comprobantes")</a>
     </div>
 
-    @if (_aging.Count > 0)
+    @if (_aging.Count > 0 || _fx is { Payments: > 0 })
     {
         <div class="stat-strip boxed">
-            <StatTile Icon="wallet" Label="@(T("receivables.por_cobrar"))" Value="@Fmt.MoneyCompact(Main.Sum(r => r.Total), _currency)" Hint="@Fmt.Count(Main.Count(), T("count.cliente"), T("count.clientes"))" />
-            <StatTile Icon="alert" Label="@(T("receivables.vencido"))" Value="@Fmt.MoneyCompact(Main.Sum(r => r.Overdue), _currency)" Hint="@Fmt.Count(Main.Count(r => r.Overdue > 0), T("count.cliente"), T("count.clientes"))" />
+            <StatTile Icon="wallet" Label="@(T("receivables.por_cobrar"))" Value="@Fmt.MoneyCompact(_aging.Sum(r => r.BaseTotal), _currency)" Hint="@Fmt.Count(_aging.Select(r => r.CustomerId).Distinct().Count(), T("count.cliente"), T("count.clientes"))" />
+            <StatTile Icon="alert" Label="@(T("receivables.vencido"))" Value="@Fmt.MoneyCompact(_aging.Sum(r => r.BaseOverdue), _currency)" Hint="@Fmt.Count(_aging.Where(r => r.Overdue > 0).Select(r => r.CustomerId).Distinct().Count(), T("count.cliente"), T("count.clientes"))" />
             <StatTile Icon="clock" Label="@(T("receivables.mas_de_90_dias"))" Value="@Fmt.MoneyCompact(Main.Sum(r => r.Over90), _currency)" UpIsGood="false" />
+            @if (_fx is { Payments: > 0 } fx)
+            {
+                <StatTile Icon="arrows" Label="@(T("receivables.diferencia_de_cambio"))" Value="@((fx.Net < 0 ? "−" : "") + Fmt.MoneyCompact(Math.Abs(fx.Net), fx.CurrencyCode))"
+                          Hint="@(T("receivables.diferencia_de_cambio_hint", Fmt.Money(fx.Gains, fx.CurrencyCode), Fmt.Money(fx.Losses, fx.CurrencyCode)))" />
+            }
         </div>
     }
 
@@ -166,6 +171,7 @@
 
 @code {
     private IReadOnlyList<AgingRow> _aging = [];
+    private FxSummary? _fx;
     private IReadOnlyList<PaymentRow> _payments = [];
     private string _currency = "PEN";
 
@@ -175,7 +181,7 @@
     private string? _error;
     private bool _busy;
 
-    /// <summary>Los saldos en la moneda de la empresa, para los indicadores (los de otras monedas se ven en la tabla).</summary>
+    /// <summary>Los saldos en la moneda de la empresa (más de 90 días); los totales suman todas las monedas convertidas.</summary>
     private IEnumerable<AgingRow> Main => _aging.Where(r => r.CurrencyCode == _currency);
 
     private string Cell(decimal value, string currency) => value == 0 ? "—" : Fmt.Money(value, currency);
@@ -185,6 +191,8 @@
         _aging = await Erp.Invoices.GetAgingAsync();
         _payments = (await Erp.Invoices.GetPaymentsAsync(null, 1, 12)).Items;
         _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _fx = await Erp.Invoices.GetFxSummaryAsync(new DateOnly(today.Year, today.Month, 1), today);
     }
 
     private async Task OpenStatementAsync(Guid customerId, string currency)
