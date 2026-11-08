@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using VortexApi.Suite.Auditing;
+using VortexApi.Suite.Money;
 using VortexApi.Suite.Taxes;
 using VortexErp.Core.Data;
 using VortexErp.Core.Domain;
@@ -76,6 +77,11 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(docType == "RUC", T("error.la_factura_requiere_un_cliente"));
         }
 
+        // Tipo de cambio del día a la moneda de la empresa (de la copia local del hub): sin él no se emite en otra moneda.
+        var company = await Fx.CompanyCurrencyAsync(c, tx);
+        var rate = await Fx.RateAsync(c, tx, currency, company, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
+        Require(rate is not null, T("error.sin_tipo_de_cambio", currency, company));
+
         // Impuesto del país de la empresa, desglosado por tasa y redondeado con la moneda del comprobante.
         var breakdown = TaxCalculator.Calculate(lines.Select(l => new TaxableLine(l.Total, l.TaxCode)), await TaxRegimeAsync(c, tx), currency);
         var (subtotal, tax, total) = (breakdown.Net, breakdown.Tax, breakdown.Total);
@@ -83,7 +89,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var number = await DocumentNumbers.NextInvoiceAsync(c, tx, kind, Context.DeviceTag);
         var dueDate = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime).AddDays(Math.Max(0, creditDays));
         var e = new InvoiceIssued(id, number, customerId, saleId, orderId, now, total, currency, kind, subtotal, tax, dueDate, lines,
-            Math.Min(paid, total));
+            Math.Min(paid, total), rate == 1m ? null : rate);
         await InsertInvoiceAsync(c, tx, e, "local", Context.UserName);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceIssued, e, subjectType: "invoice", subjectId: number, id: id);
         await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", id, number, $"{(kind == InvoiceKinds.Invoice ? "Factura" : "Boleta")} por {total:0.##} {currency}");
@@ -92,7 +98,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
 
     // ---------- Cobranza ----------
 
-    public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, CancellationToken ct = default)
+    /// <summary>
+    /// Cobro de un comprobante. <paramref name="amount"/> va en <paramref name="paidCurrency"/> (sin ella, la del comprobante).
+    /// Un comprobante en otra moneda se puede cobrar en la de la empresa al tipo de cambio del día: se abona lo que eso vale
+    /// en la moneda del comprobante y la diferencia con el tipo de la emisión queda como diferencia de cambio.
+    /// </summary>
+    public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, string? paidCurrency = null,
+        CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.RegisterPayment);
         Require(amount > 0, T("error.el_monto_debe_ser_mayor"));
@@ -102,16 +114,52 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var invoice = await GetAsync(c, tx, invoiceId);
         Require(invoice is not null, T("error.el_comprobante_no_existe"));
         Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
-        Require(amount <= invoice.Balance, T("error.el_saldo_del_comprobante_es", invoice.Balance));
+
+        var applied = amount;
+        decimal? paidAmount = null, rate = null, fx = null;
+        var paid = string.IsNullOrWhiteSpace(paidCurrency) ? invoice.CurrencyCode : paidCurrency.Trim().ToUpperInvariant();
+        if (paid != invoice.CurrencyCode)
+        {
+            var company = await Fx.CompanyCurrencyAsync(c, tx);
+            Require(paid == company, T("error.cobro_solo_en_moneda", invoice.CurrencyCode, company));
+            rate = await Fx.RateAsync(c, tx, invoice.CurrencyCode, company, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
+            Require(rate is not null, T("error.sin_tipo_de_cambio", invoice.CurrencyCode, company));
+            // Lo que vale lo recibido en la moneda del comprobante; si cubre el saldo (con el redondeo), salda el comprobante.
+            applied = Currencies.Get(invoice.CurrencyCode).Round(amount / rate!.Value);
+            if (applied > invoice.Balance && Currencies.Get(company).Round(invoice.Balance * rate.Value) <= amount + 0.01m)
+                applied = invoice.Balance;
+            paidAmount = amount;
+            // Diferencia de cambio: lo recibido contra lo que valía lo abonado el día de la emisión.
+            fx = Currencies.Get(company).Round(amount - applied * (invoice.ExchangeRate ?? rate.Value));
+        }
+        Require(applied <= invoice.Balance, T("error.el_saldo_del_comprobante_es", invoice.Balance));
 
         var id = Guid.NewGuid();
         var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);
-        var e = new PaymentReceived(id, invoice.CustomerId, invoiceId, invoice.SaleId, amount, invoice.CurrencyCode, method, number, Clean(reference));
+        var e = new PaymentReceived(id, invoice.CustomerId, invoiceId, invoice.SaleId, applied, invoice.CurrencyCode, method, number, Clean(reference),
+            paidAmount, paidAmount is null ? null : paid, rate, fx);
         await InsertPaymentAsync(c, tx, e, now, Context.UserName);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PaymentReceived, e, subjectType: "invoice", subjectId: invoice.Number, id: id);
-        await AuditAsync(c, tx, now, AuditActions.PaymentRegistered, "invoice", invoiceId, invoice.Number, $"{number}: {amount:0.##} {invoice.CurrencyCode} ({method})");
+        await AuditAsync(c, tx, now, AuditActions.PaymentRegistered, "invoice", invoiceId, invoice.Number,
+            paidAmount is null ? $"{number}: {amount:0.##} {invoice.CurrencyCode} ({method})"
+                : $"{number}: {amount:0.##} {paid} = {applied:0.##} {invoice.CurrencyCode} a {rate:0.####} ({method}); diferencia de cambio {fx:0.##} {paid}");
         return number;
     }, ct);
+    }
+
+    /// <summary>Diferencia de cambio de los cobros entre <paramref name="from"/> y <paramref name="to"/> (fechas de la empresa, incluidas).</summary>
+    public async Task<FxSummary> GetFxSummaryAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        static DateTimeOffset Utc(DateOnly d) => new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue), ErpClock.Offset).ToUniversalTime();
+        var rows = await c.QueryAsync("""
+            SELECT COALESCE(SUM(CASE WHEN fx_difference > 0 THEN fx_difference ELSE 0 END), 0) AS gains,
+                   COALESCE(SUM(CASE WHEN fx_difference < 0 THEN -fx_difference ELSE 0 END), 0) AS losses,
+                   COUNT(*) AS n
+            FROM payments WHERE fx_difference IS NOT NULL AND received_at >= $from AND received_at < $to
+            """, r => (Gains: r.Dec("gains"), Losses: r.Dec("losses"), Count: r.Int("n")), null,
+            ("$from", Utc(from)), ("$to", Utc(to.AddDays(1))));
+        return new FxSummary(await Fx.CompanyCurrencyAsync(c, null), rows[0].Gains, rows[0].Losses, rows[0].Count);
     }
 
     // ---------- Notas de crédito y débito ----------
@@ -267,7 +315,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
             Require(invoice.CanVoid, T("error.tiene_cobros_o_notas_emite_nota"));
-            var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId);
+            var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId, invoice.CustomerId);
             await MarkVoidedAsync(c, tx, now, e);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
                 id: DeterministicId.From("invoice_void", invoiceId));
@@ -291,8 +339,11 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             .Select(g =>
             {
                 decimal Bucket(int fromDays, int toDays) => g.Where(i => DaysOverdue(i, today) is var d && d >= fromDays && d <= toDays).Sum(i => i.Balance);
+                // En moneda de la empresa, al tipo de cambio de cada comprobante (el de su emisión).
+                decimal Base(IEnumerable<InvoiceRow> list) => list.Sum(i => i.Balance * (i.ExchangeRate ?? 1m));
                 return new AgingRow(g.Key.CustomerId, g.Key.Name, g.Key.CurrencyCode, Bucket(int.MinValue, 0), Bucket(1, 30), Bucket(31, 60),
-                    Bucket(61, 90), Bucket(91, int.MaxValue));
+                    Bucket(61, 90), Bucket(91, int.MaxValue),
+                    Base(g), Base(g.Where(i => DaysOverdue(i, today) > 0)));
             })
             .OrderByDescending(r => r.Overdue).ThenByDescending(r => r.Total)
             .ToList();
@@ -409,7 +460,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             ORDER BY y.received_at DESC LIMIT $limit OFFSET $offset
             """, r => new PaymentRow(r.Guid("id"), r.Str("number"), r.GuidOrNull("customer_id"), r.StrOrNull("customer_name"),
                 r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"), r.Dec("amount"), r.Str("currency_code"), r.Str("method"),
-                r.StrOrNull("reference"), r.Time("received_at"), r.StrOrNull("user_name")), null,
+                r.StrOrNull("reference"), r.Time("received_at"), r.StrOrNull("user_name"), r.DecOrNull("paid_amount"),
+                r.StrOrNull("paid_currency"), r.DecOrNull("exchange_rate"), r.DecOrNull("fx_difference")), null,
             ("$invoice", invoiceId), ("$limit", pageSize), ("$offset", (page - 1) * pageSize));
         return new PagedResult<PaymentRow>(rows, total, page, pageSize);
     }
@@ -553,12 +605,12 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     {
         await c.ExecAsync("""
             INSERT INTO invoices (id, number, kind, origin, customer_id, order_id, sale_id, issued_at, due_date, currency_code, subtotal,
-                                  tax, total, paid, user_name)
-            VALUES ($id, $number, $kind, $origin, $customer, $order, $sale, $at, $due, $currency, $subtotal, $tax, $total, $paid, $user)
+                                  tax, total, paid, user_name, exchange_rate)
+            VALUES ($id, $number, $kind, $origin, $customer, $order, $sale, $at, $due, $currency, $subtotal, $tax, $total, $paid, $user, $rate)
             """, tx, ("$id", e.InvoiceId), ("$number", e.Number), ("$kind", e.Kind ?? InvoiceKinds.Invoice), ("$origin", origin),
             ("$customer", e.CustomerId), ("$order", e.OrderId), ("$sale", e.SaleId), ("$at", e.IssuedAt),
             ("$due", e.DueDate?.ToString("yyyy-MM-dd")), ("$currency", e.CurrencyCode), ("$subtotal", e.Subtotal), ("$tax", e.Tax),
-            ("$total", e.Total), ("$paid", e.Paid), ("$user", userName));
+            ("$total", e.Total), ("$paid", e.Paid), ("$user", userName), ("$rate", e.ExchangeRate));
         var lineNo = 0;
         foreach (var l in e.Lines ?? [])
         {
@@ -573,11 +625,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     private static async Task InsertPaymentAsync(SqliteConnection c, SqliteTransaction tx, PaymentReceived e, DateTimeOffset at, string? userName)
     {
         await c.ExecAsync("""
-            INSERT INTO payments (id, number, customer_id, invoice_id, sale_id, amount, currency_code, method, reference, received_at, user_name)
-            VALUES ($id, $number, $customer, $invoice, $sale, $amount, $currency, $method, $ref, $at, $user)
+            INSERT INTO payments (id, number, customer_id, invoice_id, sale_id, amount, currency_code, method, reference, received_at, user_name,
+                                  paid_amount, paid_currency, exchange_rate, fx_difference)
+            VALUES ($id, $number, $customer, $invoice, $sale, $amount, $currency, $method, $ref, $at, $user, $paid, $paidCurrency, $rate, $fx)
             """, tx, ("$id", e.PaymentId), ("$number", e.Number ?? e.PaymentId.ToString()[..8].ToUpperInvariant()), ("$customer", e.CustomerId),
             ("$invoice", e.InvoiceId), ("$sale", e.SaleId), ("$amount", e.Amount), ("$currency", e.CurrencyCode), ("$method", e.Method),
-            ("$ref", e.Reference), ("$at", at), ("$user", userName));
+            ("$ref", e.Reference), ("$at", at), ("$user", userName), ("$paid", e.PaidAmount), ("$paidCurrency", e.PaidCurrency),
+            ("$rate", e.ExchangeRate), ("$fx", e.FxDifference));
         if (e.InvoiceId is { } invoice)
             // Tope: lo que vale el comprobante con sus notas (un cobro repetido de otro equipo no lo pasa). Nunca baja lo cobrado.
             await c.ExecAsync("UPDATE invoices SET paid = MAX(paid, MIN(total + debited - credited, paid + $amount)) WHERE id = $id", tx,
@@ -609,7 +663,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         r.StrOrNull("customer_document"), r.GuidOrNull("order_id"), r.GuidOrNull("sale_id"), r.Time("issued_at"),
         r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : null,
         r.Str("currency_code"), r.Dec("subtotal"), r.Dec("tax"), r.Dec("total"), r.Dec("paid"), r.StrOrNull("user_name"),
-        r.Str("status"), r.Dec("credited"), r.Dec("debited"), r.TimeOrNull("voided_at"), r.StrOrNull("void_reason"));
+        r.Str("status"), r.Dec("credited"), r.Dec("debited"), r.TimeOrNull("voided_at"), r.StrOrNull("void_reason"),
+        r.DecOrNull("exchange_rate"));
 
     internal static Task<List<InvoiceLineRow>> LinesAsync(SqliteConnection c, SqliteTransaction? tx, Guid invoiceId) =>
         c.QueryAsync("SELECT * FROM invoice_lines WHERE invoice_id = $id ORDER BY line_no", r => new InvoiceLineRow(

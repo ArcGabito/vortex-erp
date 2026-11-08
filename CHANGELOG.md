@@ -8,6 +8,12 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Multimoneda (fase 2b):** pedidos y comprobantes en otra moneda con el tipo de cambio del hub (copia local, funciona
+  sin conexión): el comprobante guarda el del día de emisión y los precios de lista se convierten. Un comprobante en otra
+  moneda se cobra en ella o en la de la empresa al tipo del día, y la diferencia de cambio queda registrada en el cobro
+  (`payment.received` con `paidAmount`, `paidCurrency`, `exchangeRate` y `fxDifference`). El panel, los ingresos y la
+  antigüedad de saldos suman en moneda de la empresa; tipos de cambio en Configuración y diferencia de cambio del mes en
+  Cobranzas.
 - **Celular (Android):** la app respeta las barras del sistema (estado y gestos) con íconos oscuros; el botón Atrás
   cierra el diálogo o el menú abiertos y vuelve a la página anterior en vez de cerrar la app; las tablas se ven como
   tarjetas y las pestañas que no caben se deslizan; en pantallas táctiles no se abre el teclado solo. El negro de la
@@ -68,3 +74,7 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Removed
 - Plantilla inicial de .NET MAUI (XAML).
+
+### Fixed
+- Celular: los diálogos (detalle del comprobante, nuevo pedido) y los indicadores ya no se salen de la pantalla; las líneas
+  del pedido muestran el nombre del artículo con precio y cantidad debajo.

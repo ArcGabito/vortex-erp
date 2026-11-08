@@ -181,7 +181,7 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         var orderLines = new List<OrderLine>();
         foreach (var l in lines)
         {
-            var price = l.UnitPrice ?? await c.ScalarAsync<decimal?>("SELECT price FROM items WHERE id = $id", tx, ("$id", l.ItemId));
+            var price = l.UnitPrice ?? await ListPriceAsync(c, tx, l.ItemId, currencyCode, now);
             Require(price is not null, T("error.uno_de_los_articulos_ya"));
             orderLines.Add(new OrderLine(l.ItemId, l.Quantity, price!.Value));
         }
@@ -195,6 +195,21 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
             new OrderCreated(orderId, number, customerId, site, orderLines, total, currencyCode, quoteId),
             subjectType: "order", subjectId: number, id: orderId);
         return number;
+    }
+
+    /// <summary>
+    /// Precio de lista del artículo en la moneda del pedido: si el artículo tiene otra moneda, se convierte con el tipo de
+    /// cambio del día (sin tipo de cambio no se puede vender en esa moneda).
+    /// </summary>
+    private static async Task<decimal?> ListPriceAsync(SqliteConnection c, SqliteTransaction tx, Guid itemId, string currency, DateTimeOffset now)
+    {
+        var item = await c.FirstOrDefaultAsync("SELECT price, currency_code FROM items WHERE id = $id",
+            r => new { Price = r.Dec("price"), Currency = r.Str("currency_code") }, tx, ("$id", itemId));
+        if (item is null)
+            return null;
+        var rate = await Fx.RateAsync(c, tx, item.Currency, currency, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
+        Require(rate is not null, T("error.sin_tipo_de_cambio", item.Currency, currency));
+        return VortexApi.Suite.Money.Currencies.Get(currency).Round(item.Price * rate!.Value);
     }
 
     private static async Task<decimal> InsertAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, Guid id, string number,

@@ -60,6 +60,44 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
             ("$updated", d.Meta.UpdatedAt));
     }
 
+    /// <summary>Tipo de cambio del hub (copia local para emitir y cobrar en otras monedas sin conexión).</summary>
+    public async Task ApplyExchangeRateAsync(VortexMasterChange<VortexExchangeRate> change, CancellationToken ct = default)
+    {
+        var d = change.Data;
+        await using var c = await Db.OpenAsync(ct);
+        await c.ExecAsync("""
+            INSERT INTO exchange_rates (id, date, from_currency, to_currency, rate, buy_rate, sell_rate, source, version, is_deleted)
+            VALUES ($id, $date, $from, $to, $rate, $buy, $sell, $source, $version, $deleted)
+            ON CONFLICT (id) DO UPDATE SET
+                date = excluded.date, from_currency = excluded.from_currency, to_currency = excluded.to_currency, rate = excluded.rate,
+                buy_rate = excluded.buy_rate, sell_rate = excluded.sell_rate, source = excluded.source, version = excluded.version,
+                is_deleted = excluded.is_deleted
+            WHERE excluded.version > exchange_rates.version
+            """, null, ("$id", change.EntityId), ("$date", d.Date.ToString("yyyy-MM-dd")), ("$from", d.FromCurrency.ToUpperInvariant()),
+            ("$to", d.ToCurrency.ToUpperInvariant()), ("$rate", d.Rate), ("$buy", d.BuyRate), ("$sell", d.SellRate), ("$source", d.Source),
+            ("$version", change.Version), ("$deleted", Deleted(change.Operation, d.Meta)));
+    }
+
+    /// <summary>Tipo de cambio de hoy (o el último anterior) de <paramref name="from"/> a <paramref name="to"/>; null si no hay.</summary>
+    public async Task<decimal?> GetRateAsync(string from, string to, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await Fx.RateAsync(c, null, from, to, DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime));
+    }
+
+    /// <summary>El tipo de cambio más reciente de cada par (para mostrarlo y elegir monedas).</summary>
+    public async Task<IReadOnlyList<ExchangeRateRow>> GetLatestExchangeRatesAsync(CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await c.QueryAsync("""
+            SELECT e.* FROM exchange_rates e
+            WHERE e.is_deleted = 0 AND e.date = (SELECT MAX(date) FROM exchange_rates x
+                WHERE x.is_deleted = 0 AND x.from_currency = e.from_currency AND x.to_currency = e.to_currency)
+            ORDER BY e.from_currency, e.to_currency
+            """, r => new ExchangeRateRow(DateOnly.Parse(r.Str("date"), System.Globalization.CultureInfo.InvariantCulture),
+            r.Str("from_currency"), r.Str("to_currency"), r.Dec("rate"), r.DecOrNull("buy_rate"), r.DecOrNull("sell_rate"), r.StrOrNull("source")));
+    }
+
     public async Task ApplyPartyAsync(VortexMasterChange<VortexParty> change, CancellationToken ct = default)
     {
         var d = change.Data;

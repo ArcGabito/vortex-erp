@@ -54,8 +54,12 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 Extensiones de v1 (campos agregados, ninguno quitado):
 
 - `order.created`: `quoteId` si el pedido sale de una cotización del CRM.
-- `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja) y `lines`.
-- `payment.received`: `number` y `reference`.
+- `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja), `lines` y
+  `exchangeRate` (cuánto vale 1 unidad de la moneda del comprobante en la de la empresa el día de emisión; sin él, es la
+  misma moneda).
+- `payment.received`: `number` y `reference`. `amount` va siempre en la moneda del comprobante; si se cobró en la moneda de
+  la empresa, `paidAmount` y `paidCurrency` dicen lo recibido, `exchangeRate` el tipo del día y `fxDifference` la diferencia
+  de cambio en moneda de la empresa (positiva si es ganancia).
 - `purchase_order.created`: `number`, `currencyCode`, `total` y `expectedAt`.
 
 Contenido de los eventos nuevos (propuestos al hub):
@@ -63,7 +67,7 @@ Contenido de los eventos nuevos (propuestos al hub):
 - `credit_note.issued` / `debit_note.issued`: `noteId`, `number`, `invoiceId`, `invoiceNumber`, `customerId`, `reason`
   (`void`, `return`, `discount`, `correction`, `interest`, `increase`, `penalty`), `issuedAt`, `currencyCode`, `subtotal`,
   `tax`, `total`, `lines` (con `invoiceLineNo` en las devoluciones), `description`, `saleId` y `orderId`.
-- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId` y `orderId`. El pedido o la venta de caja quedan libres para
+- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId`, `orderId` y `customerId`. El pedido o la venta de caja quedan libres para
   emitir otro comprobante.
 
 El saldo de un comprobante es total + notas de débito − notas de crédito − cobrado; si queda negativo es saldo a favor
@@ -83,6 +87,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
+| Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
 
 - Cada evento se aplica una sola vez (`processed_events`), en la misma transacción que su efecto.
 - `schemaVersion` distinto de 1 o `data` ilegible se registran como ignorados y no traban el feed.

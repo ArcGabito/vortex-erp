@@ -124,7 +124,7 @@ public sealed record InvoiceRow(
     Guid Id, string Number, string Kind, string Origin, Guid? CustomerId, string? CustomerName, string? CustomerDocument,
     Guid? OrderId, Guid? SaleId, DateTimeOffset IssuedAt, DateOnly? DueDate, string CurrencyCode, decimal Subtotal, decimal Tax,
     decimal Total, decimal Paid, string? UserName, string Status = InvoiceStatuses.Issued, decimal Credited = 0, decimal Debited = 0,
-    DateTimeOffset? VoidedAt = null, string? VoidReason = null)
+    DateTimeOffset? VoidedAt = null, string? VoidReason = null, decimal? ExchangeRate = null)
 {
     public bool IsVoided => Status == InvoiceStatuses.Voided;
     public decimal Balance => IsVoided ? 0 : Total + Debited - Credited - Paid;
@@ -167,7 +167,8 @@ public static class PaymentMethods
 
 public sealed record PaymentRow(
     Guid Id, string Number, Guid? CustomerId, string? CustomerName, Guid? InvoiceId, string? InvoiceNumber, decimal Amount,
-    string CurrencyCode, string Method, string? Reference, DateTimeOffset ReceivedAt, string? UserName);
+    string CurrencyCode, string Method, string? Reference, DateTimeOffset ReceivedAt, string? UserName, decimal? PaidAmount = null,
+    string? PaidCurrency = null, decimal? ExchangeRate = null, decimal? FxDifference = null);
 
 // ---------- Notas de crédito y débito ----------
 
@@ -228,7 +229,7 @@ public sealed record InvoiceNoteRow(
 /// </summary>
 public sealed record AgingRow(
     Guid? CustomerId, string CustomerName, string CurrencyCode, decimal Current, decimal Days1To30, decimal Days31To60,
-    decimal Days61To90, decimal Over90)
+    decimal Days61To90, decimal Over90, decimal BaseTotal = 0, decimal BaseOverdue = 0)
 {
     public decimal Total => Current + Days1To30 + Days31To60 + Days61To90 + Over90;
     public decimal Overdue => Total - Current;
@@ -343,3 +344,14 @@ public static class TransactionStatuses
 public sealed record RecentTransaction(
     Guid Id, string Number, string Kind, string? CustomerName, string? FirstLine, int Lines, decimal Quantity,
     decimal Total, decimal Balance, string Status, DateTimeOffset IssuedAt, string CurrencyCode);
+
+// ---------- Multimoneda ----------
+
+/// <summary>Tipo de cambio del hub: 1 <c>From</c> = <c>Rate</c> <c>To</c> (con compra y venta si las trae).</summary>
+public sealed record ExchangeRateRow(DateOnly Date, string From, string To, decimal Rate, decimal? BuyRate, decimal? SellRate, string? Source);
+
+/// <summary>Diferencia de cambio de los cobros del periodo, en moneda de la empresa: ganancias, pérdidas y neto.</summary>
+public sealed record FxSummary(string CurrencyCode, decimal Gains, decimal Losses, int Payments)
+{
+    public decimal Net => Gains - Losses;
+}

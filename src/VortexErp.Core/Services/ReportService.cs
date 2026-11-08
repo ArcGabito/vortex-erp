@@ -54,8 +54,8 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         var today = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime).ToString("yyyy-MM-dd");
 
         var receivable = await c.QueryAsync("""
-            SELECT COALESCE(SUM(total + debited - credited - paid), 0) AS balance,
-                   COALESCE(SUM(CASE WHEN due_date < $today THEN total + debited - credited - paid ELSE 0 END), 0) AS overdue,
+            SELECT COALESCE(SUM((total + debited - credited - paid) * COALESCE(exchange_rate, 1)), 0) AS balance,
+                   COALESCE(SUM(CASE WHEN due_date < $today THEN (total + debited - credited - paid) * COALESCE(exchange_rate, 1) ELSE 0 END), 0) AS overdue,
                    COUNT(CASE WHEN due_date < $today THEN 1 END) AS overdue_count
             FROM invoices WHERE status = 'issued' AND total + debited - credited - paid > 0
             """, r => (Balance: r.Dec("balance"), Overdue: r.Dec("overdue"), Count: r.Int("overdue_count")), null, ("$today", today));
@@ -124,7 +124,8 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
 
         await using var c = await Db.OpenAsync(ct);
         var invoices = await c.QueryAsync($"""
-            SELECT issued_at, total FROM invoices WHERE status = 'issued' AND sale_id IS NULL AND issued_at >= $from AND issued_at < $to
+            SELECT issued_at, total * COALESCE(exchange_rate, 1) AS total FROM invoices
+            WHERE status = 'issued' AND sale_id IS NULL AND issued_at >= $from AND issued_at < $to
             UNION ALL
             {NotesSql}
             """,
@@ -176,10 +177,10 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         {
             var rows = await c.QueryAsync("""
                 SELECT COALESCE(NULLIF(it.category, ''), '') AS category, SUM(x.total) AS total FROM (
-                    SELECT l.item_id, l.total FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+                    SELECT l.item_id, l.total * COALESCE(i.exchange_rate, 1) AS total FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
                     WHERE i.status = 'issued' AND i.sale_id IS NULL AND i.issued_at >= $from AND i.issued_at < $to
                     UNION ALL
-                    SELECT l.item_id, CASE n.kind WHEN 'debit' THEN l.total ELSE -l.total END FROM invoice_note_lines l
+                    SELECT l.item_id, CASE n.kind WHEN 'debit' THEN l.total ELSE -l.total END * COALESCE(i.exchange_rate, 1) FROM invoice_note_lines l
                     JOIN invoice_notes n ON n.id = l.note_id JOIN invoices i ON i.id = n.invoice_id
                     WHERE i.sale_id IS NULL AND n.issued_at >= $from AND n.issued_at < $to
                     UNION ALL
@@ -245,7 +246,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
 
     /// <summary>Notas de comprobantes de pedidos emitidas en el periodo: las de débito suman y las de crédito restan.</summary>
     private const string NotesSql = """
-        SELECT n.issued_at, CASE n.kind WHEN 'debit' THEN n.total ELSE -n.total END AS total
+        SELECT n.issued_at, CASE n.kind WHEN 'debit' THEN n.total ELSE -n.total END * COALESCE(i.exchange_rate, 1) AS total
         FROM invoice_notes n JOIN invoices i ON i.id = n.invoice_id
         WHERE i.sale_id IS NULL AND n.issued_at >= $from AND n.issued_at < $to
         """;
@@ -257,7 +258,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
     private static Task<decimal> InvoicedAsync(Microsoft.Data.Sqlite.SqliteConnection c, DateTimeOffset from, DateTimeOffset to) =>
         c.ScalarAsync<decimal>($"""
             SELECT COALESCE(SUM(total), 0) FROM (
-                SELECT issued_at, total FROM invoices
+                SELECT issued_at, total * COALESCE(exchange_rate, 1) AS total FROM invoices
                 WHERE status = 'issued' AND sale_id IS NULL AND issued_at >= $from AND issued_at < $to
                 UNION ALL
                 {NotesSql})

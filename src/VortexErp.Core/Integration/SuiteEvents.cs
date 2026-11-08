@@ -40,16 +40,24 @@ public sealed record OrderCreated(
 /// <summary>Línea del comprobante; <c>taxCode</c> es la categoría de impuesto de la base común (extiende v1).</summary>
 public sealed record InvoiceLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null);
 
-/// <summary><c>invoice.issued</c>. Extiende v1 con <c>kind</c>, <c>subtotal</c>, <c>tax</c>, <c>dueDate</c> y <c>lines</c>.</summary>
+/// <summary>
+/// <c>invoice.issued</c>. Extiende v1 con <c>kind</c>, <c>subtotal</c>, <c>tax</c>, <c>dueDate</c>, <c>lines</c> y
+/// <c>exchangeRate</c> (1 unidad de la moneda del comprobante en la moneda de la empresa, el día de emisión).
+/// </summary>
 public sealed record InvoiceIssued(
     Guid InvoiceId, string Number, Guid? CustomerId, Guid? SaleId, Guid? OrderId, DateTimeOffset IssuedAt, decimal Total,
     string CurrencyCode, string? Kind = null, decimal Subtotal = 0, decimal Tax = 0, DateOnly? DueDate = null,
-    IReadOnlyList<InvoiceLine>? Lines = null, decimal Paid = 0);
+    IReadOnlyList<InvoiceLine>? Lines = null, decimal Paid = 0, decimal? ExchangeRate = null);
 
-/// <summary><c>payment.received</c>. Extiende v1 con <c>number</c> y <c>reference</c>.</summary>
+/// <summary>
+/// <c>payment.received</c>. Extiende v1 con <c>number</c> y <c>reference</c>. <c>amount</c> va siempre en la moneda del
+/// comprobante; si se cobró en otra, <c>paidAmount</c>/<c>paidCurrency</c> dicen lo recibido, <c>exchangeRate</c> el tipo del
+/// día y <c>fxDifference</c> la diferencia de cambio en moneda de la empresa (positiva si es ganancia).
+/// </summary>
 public sealed record PaymentReceived(
     Guid PaymentId, Guid? CustomerId, Guid? InvoiceId, Guid? SaleId, decimal Amount, string CurrencyCode, string Method,
-    string? Number = null, string? Reference = null);
+    string? Number = null, string? Reference = null, decimal? PaidAmount = null, string? PaidCurrency = null,
+    decimal? ExchangeRate = null, decimal? FxDifference = null);
 
 /// <summary>
 /// <c>credit_note.issued</c> y <c>debit_note.issued</c>: nota vinculada a un comprobante. <c>reason</c> es un motivo común
@@ -64,8 +72,12 @@ public sealed record InvoiceNoteIssued(
 public sealed record NoteLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null,
     int? InvoiceLineNo = null);
 
-/// <summary><c>invoice.voided</c>: comprobante anulado (sin cobros ni notas). Id del evento determinista por comprobante.</summary>
-public sealed record InvoiceVoided(Guid InvoiceId, string? Number, string? Reason, Guid? SaleId = null, Guid? OrderId = null);
+/// <summary>
+/// <c>invoice.voided</c>: comprobante anulado (sin cobros ni notas). Id del evento determinista por comprobante. Trae
+/// <c>customerId</c> para que el CRM lo anote en el cliente y <c>saleId</c> para que el POS libere la venta.
+/// </summary>
+public sealed record InvoiceVoided(Guid InvoiceId, string? Number, string? Reason, Guid? SaleId = null, Guid? OrderId = null,
+    Guid? CustomerId = null);
 
 public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal UnitCost);
 
