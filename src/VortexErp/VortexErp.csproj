@@ -42,10 +42,10 @@
 
 	<ItemGroup>
 		<!-- App Icon -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#1C120D" />
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#141414" />
 
 		<!-- Splash Screen -->
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#1C120D" BaseSize="128,128" />
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#141414" BaseSize="128,128" />
 
 		<!-- Ícono nativo de la barra de título. Las imágenes de la interfaz Blazor van en wwwroot/img. -->
 		<MauiImage Include="Resources\Images\titlebar_box.svg" BaseSize="16,16" />

@@ -17,7 +17,7 @@ public partial class App : Application
             {
                 Title = "Vortex ERP",
                 Icon = "titlebar_box.png",
-                BackgroundColor = Color.FromArgb("#1C120D"),
+                BackgroundColor = Color.FromArgb("#141414"),
                 ForegroundColor = Colors.White,
                 HeightRequest = 36,
             },

@@ -8,6 +8,11 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Celular (Android):** la app respeta las barras del sistema (estado y gestos) con íconos oscuros; el botón Atrás
+  cierra el diálogo o el menú abiertos y vuelve a la página anterior en vez de cerrar la app; las tablas se ven como
+  tarjetas y las pestañas que no caben se deslizan; en pantallas táctiles no se abre el teclado solo. El negro de la
+  pantalla de inicio, el ícono, la barra de título y el logo deja el café `#1C120D` que se veía amarillento; los montos
+  menores a 10 mil del panel se muestran con decimales.
 - **Notas de crédito y débito (fase 2a):** vinculadas al comprobante, con motivo (anulación, devolución por líneas,
   descuento, corrección; intereses, aumento de valor, penalidad) y el impuesto desglosado. El saldo del comprobante
   suma los débitos y resta los créditos; un crédito sobre una factura cobrada deja saldo a favor. Eventos
