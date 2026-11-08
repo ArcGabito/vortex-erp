@@ -8,6 +8,9 @@ public static class SuiteEvents
 {
     // Publica el ERP (y los recibe de sus otros equipos)
     public const string OrderCreated = "order.created";
+
+    /// <summary>Un pedido que superaba el límite de crédito fue aprobado (ERP → ERP, WMS).</summary>
+    public const string OrderApproved = "order.approved";
     public const string InvoiceIssued = "invoice.issued";
     public const string PaymentReceived = "payment.received";
     public const string PurchaseOrderCreated = "purchase_order.created";
@@ -35,7 +38,13 @@ public sealed record OrderLine(Guid ItemId, decimal Quantity, decimal UnitPrice)
 /// <summary><c>order.created</c>. Extiende v1 con <c>quoteId</c> (si viene de una cotización del CRM).</summary>
 public sealed record OrderCreated(
     Guid OrderId, string? Number, Guid CustomerId, Guid? SiteId, IReadOnlyList<OrderLine>? Lines, decimal Total, string? CurrencyCode,
-    Guid? QuoteId = null);
+    Guid? QuoteId = null, string? ApprovalStatus = null);
+
+/// <summary>
+/// <c>order.approved</c>: el pedido que llegó con <c>approvalStatus = "pending"</c> (superaba el límite de crédito) ya se
+/// puede preparar y facturar.
+/// </summary>
+public sealed record OrderApproved(Guid OrderId, string? Number, string? ApprovedBy);
 
 /// <summary>Línea del comprobante; <c>taxCode</c> es la categoría de impuesto de la base común (extiende v1).</summary>
 public sealed record InvoiceLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null);

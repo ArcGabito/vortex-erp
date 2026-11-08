@@ -32,6 +32,12 @@ public static class ErpPermissions
     /// <summary>Anular un comprobante sin cobros ni notas.</summary>
     public const string VoidInvoice = "invoice.void";
 
+    /// <summary>Fijar el plazo de pago, el límite de crédito y el descuento de un cliente.</summary>
+    public const string ManageCredit = "party.credit";
+
+    /// <summary>Aprobar un pedido que supera el límite de crédito del cliente.</summary>
+    public const string ApproveCredit = "order.approve_credit";
+
     public const string ReadOnly = "consulta";
     public const string Billing = "facturador";
     public const string Purchasing = "compras";
@@ -41,7 +47,7 @@ public static class ErpPermissions
         (ReadOnly, []),
         (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote]),
         (Purchasing, [CreatePurchase, CancelPurchase, CreateParty]),
-        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice]));
+        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice, ManageCredit, ApproveCredit]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -57,6 +63,8 @@ public static class ErpPermissions
         ViewAudit => T("permiso.viewaudit"),
         IssueNote => T("permiso.issuenote"),
         VoidInvoice => T("permiso.voidinvoice"),
+        ManageCredit => T("permiso.managecredit"),
+        ApproveCredit => T("permiso.approvecredit"),
         _ => permission,
     };
 }

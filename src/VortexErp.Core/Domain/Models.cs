@@ -80,6 +80,21 @@ public static class Tax
 
 // ---------- Pedidos de venta ----------
 
+public static class OrderApprovals
+{
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+}
+
+/// <summary>Condiciones comerciales del cliente (del party del hub). Límite en la moneda de la empresa; null = sin límite.</summary>
+public sealed record CreditTerms(int? PaymentTermDays, decimal? CreditLimit, decimal DiscountPercent);
+
+/// <summary>Crédito del cliente hoy, en la moneda de la empresa: lo que debe más los pedidos abiertos sin facturar.</summary>
+public sealed record CustomerCredit(Guid CustomerId, string Name, CreditTerms Terms, string CompanyCurrency, decimal Exposure, decimal Overdue)
+{
+    public decimal? Available => Terms.CreditLimit is { } limit ? limit - Exposure : null;
+}
+
 public static class OrderStatuses
 {
     public const string Open = "open";
@@ -90,9 +105,12 @@ public static class OrderStatuses
 public sealed record OrderRow(
     Guid Id, string Number, string Source, Guid? CustomerId, string? CustomerName, Guid? SiteId, string? SiteName, Guid? QuoteId,
     string Status, string CurrencyCode, decimal Total, DateTimeOffset CreatedAt, string? UserName, DateTimeOffset? DispatchedAt,
-    string? ShipmentNumber, string? Carrier, string? TrackingNumber, Guid? InvoiceId, string? InvoiceNumber, int LineCount)
+    string? ShipmentNumber, string? Carrier, string? TrackingNumber, Guid? InvoiceId, string? InvoiceNumber, int LineCount,
+    string? Approval = null, string? ApprovedBy = null)
 {
-    public bool CanInvoice => Status != OrderStatuses.Cancelled && InvoiceId is null && CustomerId is not null;
+    /// <summary>Superó el límite de crédito del cliente: no se prepara ni se factura hasta que alguien lo apruebe.</summary>
+    public bool PendingApproval => Approval == OrderApprovals.Pending;
+    public bool CanInvoice => Status != OrderStatuses.Cancelled && InvoiceId is null && CustomerId is not null && !PendingApproval;
     public bool CanCancel => Status == OrderStatuses.Open && InvoiceId is null;
 }
 

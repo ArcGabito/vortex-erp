@@ -1536,6 +1536,9 @@ table.data td { font-size: 13px; }
     .line.with-price { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; }
     .line.with-price > :first-child { grid-column: 1 / -1; }
     .line.with-price > :nth-child(4):empty { display: none; }
+    /* La cabecera solo nombra precio y cantidad, alineados con sus campos (el artículo ya se ve en la tarjeta). */
+    .line-head.with-price > :first-child { display: none; }
+    .line-head.with-price { padding-bottom: 0 !important; margin-bottom: -6px; }
 }
 
 @media (max-width: 640px) {
@@ -1562,4 +1565,21 @@ table.data td { font-size: 13px; }
     .topbar .crumbs { flex: 1; }
     .topbar .crumbs > a, .topbar .crumbs > svg { display: none; }
     .topbar .spacer { display: none; }
+}
+
+/* ---------- Crédito del cliente ---------- */
+
+.credit-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.credit-summary > div {
+    display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); min-width: 0;
+}
+.credit-summary span { font-size: 12px; }
+.credit-summary strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.credit-line { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text-2); }
+.bad-text { color: var(--bad); }
+
+@media (max-width: 640px) {
+    .credit-summary { grid-template-columns: minmax(0, 1fr); }
+    .credit-summary > div { flex-direction: row; justify-content: space-between; align-items: baseline; }
 }

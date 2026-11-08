@@ -27,8 +27,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-04 | Notas de crédito (devolución, descuento, anulación) y de débito | Hecho | 2 |
 | ERP-05 | Anulación de comprobantes con motivo, replicada | Hecho | 2 |
 | ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Hecho | 2 |
-| ERP-07 | Listas de precios y descuentos por cliente | Pendiente | 3 |
-| ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Pendiente | 3 |
+| ERP-07 | Listas de precios y descuentos por cliente | Parcial: descuento habitual por cliente | 3a |
+| ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Hecho | 3a |
 | ERP-09 | Facturación de despachos parciales | Pendiente | 3 |
 | ERP-10 | Facturación recurrente (suscripciones, alquileres) | Pendiente | 3 |
 
@@ -176,6 +176,18 @@ marcan la anulación de comprobantes (`invoice.voided`).
 
 **Terminado cuando:** un cliente que supera su límite no puede recibir otro pedido sin aprobación; un pedido despachado
 en dos partes se factura en dos comprobantes.
+
+**Partes:** 3a, crédito del cliente (plazo, límite con aprobación y descuento habitual); 3b, facturación de despachos
+parciales (cuando el WMS publique las líneas despachadas), listas de precios compartidas, facturación recurrente,
+recordatorios de cobranza y anticipos.
+
+**Estado 3a (2026-11):** hecha. Plazo de pago, límite de crédito (moneda de la empresa) y descuento habitual viven en el
+`party` del hub (bloque `credit`) y se editan en Clientes y proveedores (permiso `party.credit`). Al cambiarlos se
+devuelve al hub el cliente completo tal como llegó, para no borrar lo que el ERP no maneja. El pedido toma el precio de
+lista con el descuento del cliente; si lo que debe (comprobantes con saldo más pedidos abiertos sin facturar) más el
+pedido supera el límite, el pedido queda **por aprobar**: `order.created` lleva `approvalStatus: "pending"`, no se
+factura y el WMS no lo prepara hasta `order.approved` (permiso `order.approve_credit`). El plazo del cliente se propone al
+facturar y se usa en las ventas de caja al crédito. Pruebas en `CreditTests`.
 
 ## Fase 4: compras, cuentas por pagar y tesorería · L
 
