@@ -59,7 +59,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
 
             var (id, number) = await IssueAsync(c, tx, now, kind, sale.CustomerId, null, saleId, sale.CurrencyCode,
                 lines, paid: sale.Total - sale.Credit,
-                creditDays: sale.Credit > 0 ? DefaultCreditDays : 0);
+                creditDays: sale.Credit > 0 ? await TermDaysAsync(c, tx, sale.CustomerId) : 0);
             await c.ExecAsync("UPDATE pos_sales SET invoice_id = $invoice WHERE id = $id", tx, ("$id", saleId), ("$invoice", id));
             return number;
         }, ct);
@@ -647,6 +647,19 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         return codes;
     }
 
+
+    /// <summary>Plazo de pago del cliente (de sus condiciones del hub) o el habitual si no tiene.</summary>
+    internal static async Task<int> TermDaysAsync(SqliteConnection c, SqliteTransaction? tx, Guid? customerId) =>
+        customerId is { } id && await c.ScalarAsync<long?>("SELECT payment_term_days FROM parties WHERE id = $id", tx, ("$id", id)) is { } days
+            ? (int)days
+            : DefaultCreditDays;
+
+    /// <summary>Plazo de pago del cliente, para proponerlo al facturar un pedido.</summary>
+    public async Task<int> GetTermDaysAsync(Guid? customerId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await TermDaysAsync(c, null, customerId);
+    }
 
     private string Today() => DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime).ToString("yyyy-MM-dd");
 

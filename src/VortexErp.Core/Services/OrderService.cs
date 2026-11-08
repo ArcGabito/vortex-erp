@@ -75,7 +75,8 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         await using var c = await Db.OpenAsync(ct);
         var where = $"""
             WHERE (1 = 1{SiteFilterOrNull("o.site_id")})
-              AND ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL))
+              AND ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL)
+                   OR ($status = 'pending_approval' AND o.approval = 'pending' AND o.status <> 'cancelled'))
               AND ($search IS NULL OR o.number LIKE $like OR p.name LIKE $like OR p.document_number LIKE $like)
             """;
         var args = new (string, object?)[]
@@ -123,7 +124,7 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
             return;
         var number = string.IsNullOrWhiteSpace(e.Number) ? $"{source}-{e.OrderId.ToString()[..8].ToUpperInvariant()}" : e.Number;
         await InsertAsync(c, tx, at, e.OrderId, number, source, e.CustomerId == Guid.Empty ? null : e.CustomerId, e.SiteId,
-            e.Lines ?? [], e.CurrencyCode ?? "PEN", e.QuoteId, null);
+            e.Lines ?? [], e.CurrencyCode ?? "PEN", e.QuoteId, null, e.ApprovalStatus == OrderApprovals.Pending ? OrderApprovals.Pending : null);
         if (e.QuoteId is { } quoteId)
             await c.ExecAsync("UPDATE accepted_quotes SET order_id = $order WHERE id = $id AND order_id IS NULL", tx,
                 ("$id", quoteId), ("$order", e.OrderId));
@@ -178,24 +179,72 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         var site = siteId ?? await DefaultSiteAsync(c, tx);
         Require(site is null || CanUseSite(site.Value), T("error.sede_no_asignada"));
 
+        var terms = (await c.QueryAsync("SELECT payment_term_days, credit_limit, discount_percent FROM parties WHERE id = $id",
+            MasterDataService.ReadTerms, tx, ("$id", customerId))).Single();
+        var money = VortexApi.Suite.Money.Currencies.Get(currencyCode);
         var orderLines = new List<OrderLine>();
         foreach (var l in lines)
         {
-            var price = l.UnitPrice ?? await ListPriceAsync(c, tx, l.ItemId, currencyCode, now);
+            // Sin precio escrito se usa el de lista con el descuento habitual del cliente.
+            var price = l.UnitPrice;
+            if (price is null && await ListPriceAsync(c, tx, l.ItemId, currencyCode, now) is { } list)
+                price = money.Round(list * (1 - terms.DiscountPercent / 100m));
             Require(price is not null, T("error.uno_de_los_articulos_ya"));
             orderLines.Add(new OrderLine(l.ItemId, l.Quantity, price!.Value));
         }
 
+        // Límite de crédito: si lo que debe el cliente, más sus pedidos abiertos, más este pedido lo supera, el pedido
+        // queda por aprobar (no se prepara ni se factura hasta entonces).
+        string? approval = null;
+        var orderTotal = orderLines.Sum(l => Tax.Round(l.Quantity * l.UnitPrice));
+        if (terms.CreditLimit is { } limit)
+        {
+            var today = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime);
+            var (exposure, _) = await Credit.ExposureAsync(c, tx, customerId, today);
+            var after = exposure + await Credit.ToCompanyAsync(c, tx, orderTotal, currencyCode, today);
+            if (after > limit)
+                approval = OrderApprovals.Pending;
+        }
+
         var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Order, Context.DeviceTag);
         var total = await InsertAsync(c, tx, now, orderId, number, ErpSyncHandlers.ProductCode, customerId, site, orderLines, currencyCode,
-            quoteId, Context.UserName);
+            quoteId, Context.UserName, approval);
         if (quoteId is { } q)
             await c.ExecAsync("UPDATE accepted_quotes SET order_id = $order WHERE id = $id", tx, ("$id", q), ("$order", orderId));
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderCreated,
-            new OrderCreated(orderId, number, customerId, site, orderLines, total, currencyCode, quoteId),
+            new OrderCreated(orderId, number, customerId, site, orderLines, total, currencyCode, quoteId, approval),
             subjectType: "order", subjectId: number, id: orderId);
+        if (approval is not null)
+            await AuditAsync(c, tx, now, "order.credit_hold", "order", orderId, number,
+                $"Supera el límite de crédito ({terms.CreditLimit:0.##}); queda por aprobar");
         return number;
     }
+
+    /// <summary>
+    /// Aprueba un pedido que superaba el límite de crédito: desde ahí se prepara y se factura. Viaja como
+    /// <c>order.approved</c> para los demás equipos del ERP y el WMS.
+    /// </summary>
+    public Task ApproveAsync(Guid orderId, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.ApproveCredit);
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var order = await GetAsync(c, tx, orderId);
+            Require(order is not null, T("error.el_pedido_no_existe"));
+            Require(order!.PendingApproval && order.Status != OrderStatuses.Cancelled, T("error.el_pedido_no_esta_por_aprobar"));
+            await ApplyApprovedAsync(c, tx, now, orderId, Context.UserName);
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderApproved, new OrderApproved(orderId, order.Number, Context.UserName),
+                subjectType: "order", subjectId: order.Number, id: DeterministicId.From("order_approved", orderId));
+            await AuditAsync(c, tx, now, "order.approved", "order", orderId, order.Number,
+                $"Aprobado sobre el límite de crédito · {order.Total:0.##} {order.CurrencyCode}");
+            return 0;
+        }, ct);
+    }
+
+    internal static Task ApplyApprovedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, Guid orderId, string? by) =>
+        c.ExecAsync("""
+            UPDATE sales_orders SET approval = 'approved', approved_by = $by, approved_at = $at WHERE id = $id AND approval = 'pending'
+            """, tx, ("$id", orderId), ("$by", by), ("$at", at));
 
     /// <summary>
     /// Precio de lista del artículo en la moneda del pedido: si el artículo tiene otra moneda, se convierte con el tipo de
@@ -213,15 +262,17 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
     }
 
     private static async Task<decimal> InsertAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, Guid id, string number,
-        string source, Guid? customerId, Guid? siteId, IReadOnlyList<OrderLine> lines, string currencyCode, Guid? quoteId, string? userName)
+        string source, Guid? customerId, Guid? siteId, IReadOnlyList<OrderLine> lines, string currencyCode, Guid? quoteId, string? userName,
+        string? approval = null)
     {
         var valid = lines.Where(l => l.ItemId != Guid.Empty && l.Quantity > 0).ToList();
         var total = valid.Sum(l => Tax.Round(l.Quantity * l.UnitPrice));
         await c.ExecAsync("""
-            INSERT INTO sales_orders (id, number, source, customer_id, site_id, quote_id, status, currency_code, total, created_at, user_name)
-            VALUES ($id, $number, $source, $customer, $site, $quote, 'open', $currency, $total, $at, $user)
+            INSERT INTO sales_orders (id, number, source, customer_id, site_id, quote_id, status, currency_code, total, created_at, user_name,
+                                      approval)
+            VALUES ($id, $number, $source, $customer, $site, $quote, 'open', $currency, $total, $at, $user, $approval)
             """, tx, ("$id", id), ("$number", number), ("$source", source), ("$customer", customerId), ("$site", siteId),
-            ("$quote", quoteId), ("$currency", currencyCode), ("$total", total), ("$at", at), ("$user", userName));
+            ("$quote", quoteId), ("$currency", currencyCode), ("$total", total), ("$at", at), ("$user", userName), ("$approval", approval));
         var lineNo = 0;
         foreach (var l in valid)
         {
@@ -246,7 +297,8 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         r.Guid("id"), r.Str("number"), r.Str("source"), r.GuidOrNull("customer_id"), r.StrOrNull("customer_name"), r.GuidOrNull("site_id"),
         r.StrOrNull("site_name"), r.GuidOrNull("quote_id"), r.Str("status"), r.Str("currency_code"), r.Dec("total"), r.Time("created_at"),
         r.StrOrNull("user_name"), r.TimeOrNull("dispatched_at"), r.StrOrNull("shipment_number"), r.StrOrNull("carrier"),
-        r.StrOrNull("tracking_number"), r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"), r.Int("line_count"));
+        r.StrOrNull("tracking_number"), r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"), r.Int("line_count"),
+        r.StrOrNull("approval"), r.StrOrNull("approved_by"));
 
     internal static async Task<List<OrderLineRow>> LinesAsync(SqliteConnection c, SqliteTransaction? tx, Guid orderId) =>
         await c.QueryAsync("""

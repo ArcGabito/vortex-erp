@@ -104,21 +104,26 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
         await using var c = await Db.OpenAsync(ct);
         await c.ExecAsync("""
             INSERT INTO parties (id, name, trade_name, kind, document_type, document_number, is_customer, is_supplier, email,
-                                 phone, city, is_active, version, is_deleted, pending, updated_at)
+                                 phone, city, is_active, version, is_deleted, pending, updated_at, payment_term_days,
+                                 credit_limit, discount_percent, hub_data)
             VALUES ($id, $name, $trade, $kind, $doctype, $docnum, $customer, $supplier, $email, $phone, $city, $active,
-                    $version, $deleted, 0, $updated)
+                    $version, $deleted, 0, $updated, $terms, $limit, $discount, $hub)
             ON CONFLICT (id) DO UPDATE SET
                 name = excluded.name, trade_name = excluded.trade_name, kind = excluded.kind,
                 document_type = excluded.document_type, document_number = excluded.document_number,
                 is_customer = excluded.is_customer, is_supplier = excluded.is_supplier, email = excluded.email,
                 phone = excluded.phone, city = excluded.city, is_active = excluded.is_active, version = excluded.version,
-                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at
-            WHERE excluded.version > parties.version
+                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at,
+                payment_term_days = excluded.payment_term_days, credit_limit = excluded.credit_limit,
+                discount_percent = excluded.discount_percent, hub_data = excluded.hub_data
+            WHERE excluded.version > parties.version OR (excluded.version = parties.version AND parties.pending = 0)
             """, null, ("$id", change.EntityId), ("$name", d.Name), ("$trade", d.TradeName), ("$kind", d.Kind),
             ("$doctype", d.DocumentType), ("$docnum", d.DocumentNumber), ("$customer", d.IsCustomer),
             ("$supplier", d.IsSupplier), ("$email", d.Email), ("$phone", d.Phone), ("$city", d.Address?.City),
             ("$active", d.IsActive), ("$version", change.Version), ("$deleted", Deleted(change.Operation, d.Meta)),
-            ("$updated", d.Meta.UpdatedAt));
+            ("$updated", d.Meta.UpdatedAt), ("$terms", d.Credit?.PaymentTermDays), ("$limit", d.Credit?.CreditLimit),
+            ("$discount", d.Credit?.DiscountPercent),
+            ("$hub", System.Text.Json.JsonSerializer.Serialize(d, VortexJson.Options)));
     }
 
     public async Task ApplyCompanyAsync(VortexMasterChange<VortexCompany> change, CancellationToken ct = default)
@@ -217,6 +222,60 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
                 ("$active", body.isActive), ("$now", now));
             await Outbox.EnqueueUpsertAsync(c, tx, now, VortexMasterResource.Sites, id, body);
             return id;
+        }, ct);
+    }
+
+    // ---------- Crédito del cliente ----------
+
+    /// <summary>Plazo, límite y descuento del cliente, con lo que debe hoy (en la moneda de la empresa).</summary>
+    public async Task<CustomerCredit?> GetCreditAsync(Guid customerId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        var found = await c.QueryAsync("SELECT name, payment_term_days, credit_limit, discount_percent FROM parties WHERE id = $id",
+            r => (Name: r.Str("name"), Terms: ReadTerms(r)), null, ("$id", customerId));
+        if (found.Count == 0)
+            return null;
+        var party = found[0];
+        var today = DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime);
+        var (exposure, overdue) = await Credit.ExposureAsync(c, null, customerId, today);
+        return new CustomerCredit(customerId, party.Name, party.Terms, await Fx.CompanyCurrencyAsync(c, null), exposure, overdue);
+    }
+
+    internal static CreditTerms ReadTerms(SqliteDataReader r) => new(
+        r.DecOrNull("payment_term_days") is { } days ? (int)days : null, r.DecOrNull("credit_limit"), r.DecOrNull("discount_percent") ?? 0);
+
+    /// <summary>
+    /// Cambia las condiciones comerciales del cliente y las sube al hub. Se manda el cliente completo tal como llegó del
+    /// hub (para no borrar su dirección ni sus notas) con el bloque <c>credit</c> nuevo; el responsable del CRM
+    /// (<c>account</c>) no se manda, así queda como esté.
+    /// </summary>
+    public Task SaveCreditTermsAsync(Guid customerId, CreditTerms terms, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.ManageCredit);
+        Require(terms.PaymentTermDays is null or (>= 0 and <= 365), T("error.plazo_de_pago_invalido"));
+        Require(terms.CreditLimit is null or >= 0, T("error.limite_de_credito_invalido"));
+        Require(terms.DiscountPercent is >= 0 and <= 100, T("error.descuento_del_cliente_invalido"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var hub = await c.ScalarAsync<string?>("SELECT hub_data FROM parties WHERE id = $id AND is_deleted = 0", tx, ("$id", customerId));
+            Require(hub is not null, T("error.el_cliente_aun_no_llega_del_hub"));
+            var body = System.Text.Json.Nodes.JsonNode.Parse(hub!)!.AsObject();
+            foreach (var key in new[] { "id", "meta", "account", "credit" })
+                body.Remove(key);
+            body["credit"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["paymentTermDays"] = terms.PaymentTermDays, ["creditLimit"] = terms.CreditLimit,
+                ["discountPercent"] = terms.DiscountPercent == 0 ? null : terms.DiscountPercent,
+            };
+            await c.ExecAsync("""
+                UPDATE parties SET payment_term_days = $days, credit_limit = $limit, discount_percent = $discount, pending = 1
+                WHERE id = $id
+                """, tx, ("$id", customerId), ("$days", terms.PaymentTermDays), ("$limit", terms.CreditLimit),
+                ("$discount", terms.DiscountPercent == 0 ? null : terms.DiscountPercent));
+            await Outbox.EnqueueUpsertAsync(c, tx, now, VortexMasterResource.Parties, customerId, body);
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.SettingsChanged, "party", customerId, null,
+                $"Crédito: {terms.PaymentTermDays?.ToString() ?? "—"} días, límite {terms.CreditLimit?.ToString("0.##") ?? "sin límite"}, descuento {terms.DiscountPercent:0.##} %");
+            return 0;
         }, ct);
     }
 

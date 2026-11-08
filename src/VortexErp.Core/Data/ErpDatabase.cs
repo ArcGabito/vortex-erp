@@ -202,5 +202,18 @@ internal static class Schema
         ALTER TABLE payments ADD COLUMN fx_difference REAL;
         DELETE FROM sync_cursors WHERE stream = 'master';
         """,
+        // 5: crédito del cliente (fase 3a). Condiciones comerciales del party del hub (plazo, límite, descuento) y una copia
+        // del cliente tal como llega del hub, para devolverlo completo al cambiar las condiciones. Un pedido que supera el
+        // límite queda por aprobar. Se vuelven a bajar los clientes para traer sus condiciones.
+        """
+        ALTER TABLE parties ADD COLUMN payment_term_days INTEGER;
+        ALTER TABLE parties ADD COLUMN credit_limit REAL;
+        ALTER TABLE parties ADD COLUMN discount_percent REAL;
+        ALTER TABLE parties ADD COLUMN hub_data TEXT;
+        ALTER TABLE sales_orders ADD COLUMN approval TEXT;
+        ALTER TABLE sales_orders ADD COLUMN approved_by TEXT;
+        ALTER TABLE sales_orders ADD COLUMN approved_at TEXT;
+        DELETE FROM sync_cursors WHERE stream = 'master';
+        """,
     ];
 }

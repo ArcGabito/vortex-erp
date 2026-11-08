@@ -44,6 +44,7 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 | Evento | Cuándo | Id del evento |
 |---|---|---|
 | `order.created` | Al crear un pedido (manual o desde una cotización) | Id del pedido |
+| `order.approved` | Al aprobar un pedido que superaba el límite de crédito del cliente | Determinista por pedido |
 | `invoice.issued` | Al emitir una factura o boleta | Id del comprobante |
 | `payment.received` | Al registrar un cobro | Id del cobro |
 | `purchase_order.created` | Al crear una orden de compra | Id de la orden |
@@ -53,7 +54,9 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 
 Extensiones de v1 (campos agregados, ninguno quitado):
 
-- `order.created`: `quoteId` si el pedido sale de una cotización del CRM.
+- `order.created`: `quoteId` si el pedido sale de una cotización del CRM, y `approvalStatus: "pending"` si supera el
+  límite de crédito del cliente: el WMS no lo prepara y no se factura hasta recibir `order.approved` (`orderId`,
+  `number`, `approvedBy`).
 - `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja), `lines` y
   `exchangeRate` (cuánto vale 1 unidad de la moneda del comprobante en la de la empresa el día de emisión; sin él, es la
   misma moneda).
@@ -82,12 +85,14 @@ crédito es distinta de la factura `F3F0-000001`).
 | `sale.voided`, `sale.returned` (POS) | Anula la venta o descuenta lo devuelto del ingreso |
 | `quote.accepted` (CRM) | La cotización queda **por convertir** en pedido |
 | `deal.won` (CRM) | Se registra la oportunidad ganada |
-| `order.created` (CRM, WMS) | Crea el pedido (si viene de una cotización, la vincula) |
+| `order.created` (CRM, WMS, otro equipo ERP) | Crea el pedido (si viene de una cotización, la vincula; si llega por aprobar, queda así) |
+| `order.approved` (otro equipo ERP) | El pedido por aprobar ya se puede facturar |
 | `shipment.dispatched` (WMS) | Marca el pedido como despachado con el transportista y la guía |
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
+| Cambio de `party` (datos maestros) | Copia local del cliente con sus condiciones (`credit`: plazo, límite, descuento) |
 
 - Cada evento se aplica una sola vez (`processed_events`), en la misma transacción que su efecto.
 - `schemaVersion` distinto de 1 o `data` ilegible se registran como ignorados y no traban el feed.

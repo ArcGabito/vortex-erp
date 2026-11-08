@@ -92,9 +92,13 @@
                                 <td class="actions-col" @onclick:stopPropagation>
                                     <KebabMenu>
                                         <button @onclick="() => OpenAsync(o)"><Icon Name="clipboard" Size="18" />@T("orders.ver_detalle")</button>
+                                        @if (o.PendingApproval && o.Status != OrderStatuses.Cancelled && Session.Can(ErpPermissions.ApproveCredit))
+                                        {
+                                            <button @onclick="() => ApproveAsync(o)"><Icon Name="check" Size="18" />@T("orders.aprobar")</button>
+                                        }
                                         @if (o.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
                                         {
-                                            <button @onclick="() => StartInvoice(o)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
+                                            <button @onclick="() => StartInvoiceAsync(o)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
                                         }
                                         @if (o.CanCancel && Session.Can(ErpPermissions.CancelOrder))
                                         {
@@ -119,7 +123,7 @@
             <div class="form-row">
                 <div class="field">
                     <label>@T("orders.cliente")</label>
-                    <select class="select" @bind="n.CustomerId">
+                    <select class="select" value="@n.CustomerId" @onchange="e => ChangeCustomerAsync(n, e.Value?.ToString())">
                         <option value="">@T("orders.elige_un_cliente")</option>
                         @foreach (var c in _customers)
                         {
@@ -151,7 +155,31 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => PriceIn(i, n.Currency)" Changed="StateHasChanged" />
+            @if (n.Credit is { } cr)
+            {
+                var total = n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0)));
+                var inCompany = n.Currency == _currency ? total : _rates.TryGetValue(n.Currency, out var rate) ? total * rate : total;
+                <div class="credit-line">
+                    <span>@(cr.Terms.PaymentTermDays is { } days ? T("orders.plazo_n_dias", days) : T("orders.plazo_habitual"))</span>
+                    @if (cr.Terms.DiscountPercent > 0)
+                    {
+                        <span>@T("orders.descuento_n", cr.Terms.DiscountPercent.ToString("0.##"))</span>
+                    }
+                    @if (cr.Available is { } available)
+                    {
+                        <span>@T("orders.disponible", Fmt.Money(available, cr.CompanyCurrency))</span>
+                    }
+                    @if (cr.Overdue > 0)
+                    {
+                        <span class="bad-text">@T("orders.vencido", Fmt.Money(cr.Overdue, cr.CompanyCurrency))</span>
+                    }
+                </div>
+                @if (cr.Available is { } left && inCompany > left)
+                {
+                    <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.supera_el_limite")</span></div>
+                }
+            }
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => PriceFor(n, i)" Changed="StateHasChanged" />
             <dl class="totals">
                 <dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), n.Currency)</dd>
             </dl>
@@ -172,6 +200,14 @@
                 <StatusPill Text="@text" Tone="@tone" />
                 <span class="muted">@Fmt.Source(d.Source) · @(d.SiteName ?? T("orders.sin_sede"))@(d.UserName is null ? "" : $" · {d.UserName}")</span>
             </div>
+            @if (d.PendingApproval && d.Status != OrderStatuses.Cancelled)
+            {
+                <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.por_aprobar_explica")</span></div>
+            }
+            else if (d.ApprovedBy is { } approver)
+            {
+                <div class="muted">@T("orders.aprobado_por", approver)</div>
+            }
             @if (d.DispatchedAt is { } at)
             {
                 <div class="alert info"><Icon Name="truck" Size="18" /><span>@T("orders.despachado_por_el_wms_el", Fmt.DateTime(at), (d.ShipmentNumber is null ? "" : $" ({d.ShipmentNumber})"), (d.Carrier is null ? "" : T("orders.con", d.Carrier)), (d.TrackingNumber is null ? "" : T("orders.guia", d.TrackingNumber)))</span></div>
@@ -199,9 +235,13 @@
             {
                 <button class="btn btn-danger" @onclick="() => CancelAsync(d)"><Icon Name="ban" Size="18" />@T("orders.cancelar_pedido")</button>
             }
-            @if (d.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
+            @if (d.PendingApproval && d.Status != OrderStatuses.Cancelled && Session.Can(ErpPermissions.ApproveCredit))
             {
-                <button class="btn btn-dark" @onclick="() => StartInvoice(d)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
+                <button class="btn btn-dark" @onclick="() => ApproveAsync(d)"><Icon Name="check" Size="18" />@T("orders.aprobar")</button>
+            }
+            else if (d.CanInvoice && Session.Can(ErpPermissions.IssueInvoice))
+            {
+                <button class="btn btn-dark" @onclick="() => StartInvoiceAsync(d)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
             }
             else
             {
@@ -238,11 +278,12 @@
         public Guid? CustomerId { get; set; }
         public Guid? SiteId { get; set; }
         public string Currency { get; set; } = "PEN";
+        public CustomerCredit? Credit { get; set; }
         public List<LineEditor.LineDraft> Lines { get; } = [];
     }
 
     private static readonly (string Value, string Label)[] Tabs =
-        [("", T("orders.todos")), ("uninvoiced", T("orders.por_facturar")), (OrderStatuses.Open, T("orders.abiertos")), (OrderStatuses.Dispatched, T("orders.despachados")), (OrderStatuses.Cancelled, T("orders.cancelados"))];
+        [("", T("orders.todos")), ("uninvoiced", T("orders.por_facturar")), ("pending_approval", T("orders.por_aprobar")), (OrderStatuses.Open, T("orders.abiertos")), (OrderStatuses.Dispatched, T("orders.despachados")), (OrderStatuses.Cancelled, T("orders.cancelados"))];
 
     private PagedResult<OrderRow>? _result;
     private IReadOnlyList<QuoteRow> _quotes = [];
@@ -319,12 +360,29 @@
             ? VortexApi.Suite.Money.Currencies.Get(currency).Round(item.Price * from / to) : null;
     }
 
+    /// <summary>Precio de lista en la moneda del pedido, con el descuento habitual del cliente.</summary>
+    private decimal? PriceFor(NewOrder n, ItemRow item)
+    {
+        var list = PriceIn(item, n.Currency);
+        var discount = n.Credit?.Terms.DiscountPercent ?? 0;
+        return list is { } price && discount > 0 ? VortexApi.Suite.Money.Currencies.Get(n.Currency).Round(price * (1 - discount / 100m)) : list;
+    }
+
     /// <summary>Cambia la moneda del pedido y recalcula los precios de lista de las líneas.</summary>
     private void ChangeCurrency(NewOrder n, string? currency)
     {
         n.Currency = currency ?? n.Currency;
         foreach (var l in n.Lines)
-            l.Price = PriceIn(l.Item, n.Currency);
+            l.Price = PriceFor(n, l.Item);
+    }
+
+    /// <summary>Al elegir el cliente se muestran su crédito y su plazo, y los precios toman su descuento.</summary>
+    private async Task ChangeCustomerAsync(NewOrder n, string? value)
+    {
+        n.CustomerId = Guid.TryParse(value, out var id) ? id : null;
+        n.Credit = n.CustomerId is { } customer ? await Erp.Master.GetCreditAsync(customer) : null;
+        foreach (var l in n.Lines)
+            l.Price = PriceFor(n, l.Item);
     }
 
     private async Task CreateAsync()
@@ -337,7 +395,10 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success(T("orders.pedido_creado", number));
+            if ((await Erp.Orders.GetOrdersAsync(number, null, 1, 1)).Items.FirstOrDefault() is { PendingApproval: true })
+                Toasts.Info(T("orders.pedido_por_aprobar", number));
+            else
+                Toasts.Success(T("orders.pedido_creado", number));
             _new = null;
         }
     }
@@ -358,11 +419,17 @@
         _detail = order;
     }
 
-    private void StartInvoice(OrderRow order)
+    private async Task ApproveAsync(OrderRow order)
+    {
+        await RunAsync(() => Erp.Orders.ApproveAsync(order.Id), T("orders.pedido_aprobado", order.Number));
+        _detail = null;
+    }
+
+    private async Task StartInvoiceAsync(OrderRow order)
     {
         _error = null;
         _kind = InvoiceKinds.Invoice;
-        _creditDays = InvoiceService.DefaultCreditDays;
+        _creditDays = await Erp.Invoices.GetTermDaysAsync(order.CustomerId);
         _detail = null;
         _invoicing = order;
     }

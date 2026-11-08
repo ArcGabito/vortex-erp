@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Crédito del cliente (fase 3a):** plazo de pago, límite de crédito y descuento habitual por cliente, compartidos por
+  el hub (`party.credit`). Un pedido que supera el crédito disponible queda **por aprobar** (no se factura ni se
+  prepara) hasta que alguien con permiso lo apruebe (`order.approved`); el pedido toma el descuento del cliente y la
+  factura su plazo. Pestaña "Por aprobar" en Pedidos.
 - **Multimoneda (fase 2b):** pedidos y comprobantes en otra moneda con el tipo de cambio del hub (copia local, funciona
   sin conexión): el comprobante guarda el del día de emisión y los precios de lista se convierten. Un comprobante en otra
   moneda se cobra en ella o en la de la empresa al tipo del día, y la diferencia de cambio queda registrada en el cobro
@@ -76,5 +80,7 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 - Plantilla inicial de .NET MAUI (XAML).
 
 ### Fixed
+- El buscador de artículos perdía dígitos cuando un lector de códigos escribía rápido.
+- Celular: el editor de líneas repetía "Artículo" en la cabecera; ahora solo nombra precio y cantidad sobre sus campos.
 - Celular: los diálogos (detalle del comprobante, nuevo pedido) y los indicadores ya no se salen de la pantalla; las líneas
   del pedido muestran el nombre del artículo con precio y cantidad debajo.

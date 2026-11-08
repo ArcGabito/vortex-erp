@@ -59,7 +59,7 @@
                     <tbody>
                         @foreach (var p in page.Items)
                         {
-                            <tr @key="p.Id">
+                            <tr @key="p.Id" style="@(p.IsCustomer ? "cursor:pointer" : null)" @onclick="() => OpenCreditAsync(p)">
                                 <td>
                                     <div class="cell-main">
                                         <Avatar Text="@p.Name" Size="34" />
@@ -116,6 +116,48 @@
         }
     }
 </div>
+
+@if (_credit is { } cr)
+{
+    <Modal Title="@(T("partners.credito_de", cr.Name))" Subtitle="@(T("partners.credito_explica"))" Size="sm" Error="@_error" OnClose="() => _credit = null">
+        <ChildContent>
+            <div class="credit-summary">
+                <div><span class="muted">@T("partners.debe")</span><strong>@Fmt.Money(cr.Exposure, cr.CompanyCurrency)</strong></div>
+                <div><span class="muted">@T("partners.vencido")</span><strong class="@(cr.Overdue > 0 ? "bad-text" : "")">@Fmt.Money(cr.Overdue, cr.CompanyCurrency)</strong></div>
+                <div><span class="muted">@T("partners.disponible")</span><strong>@(cr.Available is { } av ? Fmt.Money(av, cr.CompanyCurrency) : T("partners.sin_limite"))</strong></div>
+            </div>
+            @if (Session.Can(ErpPermissions.ManageCredit))
+            {
+                <div class="field">
+                    <label>@T("partners.plazo_de_pago")</label>
+                    <input class="control" type="number" inputmode="numeric" min="0" max="365" step="1" placeholder="@(T("partners.sin_definir"))" @bind="_termDays" />
+                </div>
+                <div class="field">
+                    <label>@T("partners.limite_de_credito", cr.CompanyCurrency)</label>
+                    <input class="control" type="number" inputmode="decimal" min="0" step="100" placeholder="@(T("partners.sin_limite"))" @bind="_limit" />
+                </div>
+                <div class="field">
+                    <label>@T("partners.descuento_habitual")</label>
+                    <input class="control" type="number" inputmode="decimal" min="0" max="100" step="0.5" @bind="_discount" />
+                </div>
+            }
+            else
+            {
+                <dl class="totals">
+                    <dt>@T("partners.plazo_de_pago")</dt><dd>@(cr.Terms.PaymentTermDays is { } d ? T("partners.n_dias", d) : T("partners.sin_definir"))</dd>
+                    <dt>@T("partners.descuento_habitual")</dt><dd>@cr.Terms.DiscountPercent.ToString("0.##") %</dd>
+                </dl>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _credit = null">@T("partners.cerrar")</button>
+            @if (Session.Can(ErpPermissions.ManageCredit))
+            {
+                <button class="btn btn-dark" disabled="@_busy" @onclick="SaveCreditAsync">@T("partners.guardar")</button>
+            }
+        </Footer>
+    </Modal>
+}
 
 @if (_form is { } f)
 {
@@ -194,8 +236,33 @@
     private int _page = 1;
     private CancellationTokenSource? _debounce;
     private PartyForm? _form;
+    private CustomerCredit? _credit;
+    private int? _termDays;
+    private decimal? _limit;
+    private decimal _discount;
     private string? _error;
     private bool _busy;
+
+    private async Task OpenCreditAsync(PartyRow p)
+    {
+        if (!p.IsCustomer || await Erp.Master.GetCreditAsync(p.Id) is not { } credit)
+            return;
+        _error = null;
+        (_termDays, _limit, _discount) = (credit.Terms.PaymentTermDays, credit.Terms.CreditLimit, credit.Terms.DiscountPercent);
+        _credit = credit;
+    }
+
+    private async Task SaveCreditAsync()
+    {
+        if (_credit is not { } credit)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Master.SaveCreditTermsAsync(credit.CustomerId, new CreditTerms(_termDays, _limit, _discount)),
+            T("partners.credito_guardado", credit.Name));
+        _busy = false;
+        if (_error is null)
+            _credit = null;
+    }
 
     protected override async Task LoadAsync()
     {

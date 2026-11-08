@@ -34,6 +34,7 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnCompany((c, ct) => master.ApplyCompanyAsync(c, ct))
         .OnExchangeRates((c, ct) => master.ApplyExchangeRateAsync(c, ct))
         .OnEvent(SuiteEvents.OrderCreated, HandleOrderCreatedAsync)
+        .OnEvent(SuiteEvents.OrderApproved, HandleOrderApprovedAsync)
         .OnEvent(SuiteEvents.QuoteAccepted, HandleQuoteAcceptedAsync)
         .OnEvent(SuiteEvents.DealWon, HandleDealWonAsync)
         .OnEvent(SuiteEvents.ShipmentDispatched, HandleShipmentDispatchedAsync)
@@ -58,6 +59,16 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
             if (order.OrderId == Guid.Empty)
                 return "sin orderId";
             await OrderService.ApplyOrderCreatedAsync(c, tx, e.OccurredAt, e.Source, order);
+            return null;
+        }, ct);
+
+    /// <summary>Otro equipo del ERP aprobó un pedido que superaba el límite de crédito.</summary>
+    public Task HandleOrderApprovedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<OrderApproved>(e, async (approved, c, tx) =>
+        {
+            if (approved.OrderId == Guid.Empty)
+                return "sin orderId";
+            await OrderService.ApplyApprovedAsync(c, tx, e.OccurredAt, approved.OrderId, approved.ApprovedBy);
             return null;
         }, ct);
 

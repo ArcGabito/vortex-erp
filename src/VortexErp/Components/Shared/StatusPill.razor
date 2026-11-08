@@ -9,6 +9,7 @@
     public static (string Text, string Tone) ForOrder(OrderRow o) =>
         o.Status == OrderStatuses.Cancelled ? (T("statuspill.cancelado"), "neutral")
         : o.InvoiceId is not null ? (T("statuspill.facturado"), "good")
+        : o.PendingApproval ? (T("statuspill.por_aprobar"), "bad")
         : o.Status == OrderStatuses.Dispatched ? (T("statuspill.despachado"), "info")
         : (T("statuspill.abierto"), "warn");
 
