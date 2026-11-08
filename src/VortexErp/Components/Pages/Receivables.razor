@@ -63,6 +63,11 @@
                                     <td class="actions-col" style="width:auto;white-space:nowrap">
                                         @if (r.CustomerId is { } customer)
                                         {
+                                            @if (r.Days1To30 + r.Days31To60 + r.Days61To90 + r.Over90 > 0)
+                                            {
+                                                <button class="btn btn-sm btn-dark" title="@(_reminders.TryGetValue(customer, out var last) ? T("receivables.recordado", Fmt.Ago(last)) : null)"
+                                                        @onclick="() => OpenReminderAsync(customer, r.CurrencyCode)"><Icon Name="bell" Size="15" />@T("receivables.recordar")</button>
+                                            }
                                             <button class="btn btn-sm" @onclick="() => OpenStatementAsync(customer, r.CurrencyCode)">@T("receivables.estado_de_cuenta")</button>
                                         }
                                         <a class="btn btn-sm btn-ghost" href="@($"comprobantes?q={Uri.EscapeDataString(r.CustomerName)}")">@T("receivables.ver")</a>
@@ -169,6 +174,27 @@
     </Modal>
 }
 
+@if (_reminder is { } rm)
+{
+    <Modal Title="@(T("receivables.recordatorio_de_cobranza"))" Subtitle="@($"{rm.CustomerName} · {Fmt.Money(rm.Overdue, rm.CurrencyCode)} {T("receivables.vencido").ToLowerInvariant()}")" Size="md" Error="@_error" OnClose="() => _reminder = null">
+        <ChildContent>
+            @if (rm.LastSentAt is { } last)
+            {
+                <div class="alert info"><Icon Name="clock" Size="18" /><span>@T("receivables.ultimo_recordatorio", Fmt.Ago(last))</span></div>
+            }
+            <div class="field">
+                <label>@T("receivables.mensaje")</label>
+                <textarea class="control" rows="8" @bind="_reminderText"></textarea>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _reminder = null">@T("receivables.cerrar")</button>
+            <button class="btn" disabled="@(rm.Email is null)" title="@(rm.Email ?? T("receivables.sin_correo"))" @onclick="() => SendReminderAsync(ReminderChannels.Email)"><Icon Name="mail" Size="16" />@T("receivables.correo")</button>
+            <button class="btn btn-dark" disabled="@(WhatsAppNumber(rm.Phone) is null)" title="@(rm.Phone ?? T("receivables.sin_telefono"))" @onclick="() => SendReminderAsync(ReminderChannels.WhatsApp)"><Icon Name="message" Size="16" />WhatsApp</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     private IReadOnlyList<AgingRow> _aging = [];
     private FxSummary? _fx;
@@ -176,6 +202,9 @@
     private string _currency = "PEN";
 
     private CustomerStatement? _statement;
+    private CollectionReminder? _reminder;
+    private string _reminderText = "";
+    private IReadOnlyDictionary<Guid, DateTimeOffset> _reminders = new Dictionary<Guid, DateTimeOffset>();
     private IReadOnlyList<string> _currencies = [];
     private DateOnly _from, _to;
     private string? _error;
@@ -189,10 +218,51 @@
     protected override async Task LoadAsync()
     {
         _aging = await Erp.Invoices.GetAgingAsync();
+        _reminders = await Erp.Invoices.GetLastRemindersAsync();
         _payments = (await Erp.Invoices.GetPaymentsAsync(null, 1, 12)).Items;
         _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
         var today = DateOnly.FromDateTime(DateTime.Today);
         _fx = await Erp.Invoices.GetFxSummaryAsync(new DateOnly(today.Year, today.Month, 1), today);
+    }
+
+    private async Task OpenReminderAsync(Guid customerId, string currency)
+    {
+        _error = null;
+        _reminder = await Erp.Invoices.GetReminderAsync(customerId, currency);
+        _reminderText = _reminder?.Message ?? "";
+    }
+
+    /// <summary>Número para WhatsApp: los 9 dígitos de un celular peruano con el 51 delante (o el número tal cual si ya lo trae).</summary>
+    private static string? WhatsAppNumber(string? phone)
+    {
+        var digits = new string((phone ?? "").Where(char.IsAsciiDigit).ToArray());
+        return digits.Length switch
+        {
+            9 when digits[0] == '9' => "51" + digits,
+            >= 10 and <= 15 => digits,
+            _ => null,
+        };
+    }
+
+    /// <summary>Abre WhatsApp o el correo con el mensaje y deja constancia del recordatorio.</summary>
+    private async Task SendReminderAsync(string channel)
+    {
+        if (_reminder is not { } rm)
+            return;
+        var text = Uri.EscapeDataString(_reminderText);
+        var url = channel == ReminderChannels.WhatsApp
+            ? $"https://wa.me/{WhatsAppNumber(rm.Phone)}?text={text}"
+            : $"mailto:{rm.Email}?subject={Uri.EscapeDataString(T("receivables.asunto_cobranza"))}&body={text}";
+        _error = await TryAsync(async () =>
+        {
+            await Launcher.Default.OpenAsync(new Uri(url));
+            await Erp.Invoices.RecordReminderAsync(rm.CustomerId, channel, rm.Overdue);
+        }, T("receivables.recordatorio_registrado"));
+        if (_error is null)
+        {
+            _reminder = null;
+            _reminders = await Erp.Invoices.GetLastRemindersAsync();
+        }
     }
 
     private async Task OpenStatementAsync(Guid customerId, string currency)

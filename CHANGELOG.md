@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Despachos parciales y cobranza (fase 3b):** cada despacho del WMS queda en el pedido con lo que salió y se factura
+  por separado (`invoice.issued` con `shipmentId`); recordatorio de cobranza con los comprobantes vencidos, listo para
+  WhatsApp o correo, que queda registrado.
 - **Crédito del cliente (fase 3a):** plazo de pago, límite de crédito y descuento habitual por cliente, compartidos por
   el hub (`party.credit`). Un pedido que supera el crédito disponible queda **por aprobar** (no se factura ni se
   prepara) hasta que alguien con permiso lo apruebe (`order.approved`); el pedido toma el descuento del cliente y la
