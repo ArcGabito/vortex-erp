@@ -315,7 +315,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
             Require(invoice.CanVoid, T("error.tiene_cobros_o_notas_emite_nota"));
-            var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId);
+            var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId, invoice.CustomerId);
             await MarkVoidedAsync(c, tx, now, e);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
                 id: DeterministicId.From("invoice_void", invoiceId));

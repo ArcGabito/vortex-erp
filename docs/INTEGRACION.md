@@ -57,6 +57,7 @@ Extensiones de v1 (campos agregados, ninguno quitado):
 - `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja), `lines` y
   `exchangeRate` (cuánto vale 1 unidad de la moneda del comprobante en la de la empresa el día de emisión; sin él, es la
   misma moneda).
+- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId`, `orderId` y `customerId`.
 - `payment.received`: `number` y `reference`. `amount` va siempre en la moneda del comprobante; si se cobró en la moneda de
   la empresa, `paidAmount` y `paidCurrency` dicen lo recibido, `exchangeRate` el tipo del día y `fxDifference` la diferencia
   de cambio en moneda de la empresa (positiva si es ganancia).

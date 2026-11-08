@@ -72,8 +72,12 @@ public sealed record InvoiceNoteIssued(
 public sealed record NoteLine(Guid? ItemId, string Description, decimal Quantity, decimal UnitPrice, decimal Total, string? TaxCode = null,
     int? InvoiceLineNo = null);
 
-/// <summary><c>invoice.voided</c>: comprobante anulado (sin cobros ni notas). Id del evento determinista por comprobante.</summary>
-public sealed record InvoiceVoided(Guid InvoiceId, string? Number, string? Reason, Guid? SaleId = null, Guid? OrderId = null);
+/// <summary>
+/// <c>invoice.voided</c>: comprobante anulado (sin cobros ni notas). Id del evento determinista por comprobante. Trae
+/// <c>customerId</c> para que el CRM lo anote en el cliente y <c>saleId</c> para que el POS libere la venta.
+/// </summary>
+public sealed record InvoiceVoided(Guid InvoiceId, string? Number, string? Reason, Guid? SaleId = null, Guid? OrderId = null,
+    Guid? CustomerId = null);
 
 public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal UnitCost);
 
