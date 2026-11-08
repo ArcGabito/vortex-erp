@@ -30,6 +30,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppSession>();
         builder.Services.AddSingleton<Toasts>();
         builder.Services.AddSingleton<FileExporter>();
+        builder.Services.AddSingleton<BackButton>();
 
 #if WINDOWS
         // Botones de la barra de título (minimizar, maximizar, cerrar) en blanco sobre la barra oscura de
@@ -43,9 +44,9 @@ public static class MauiProgram
             bar.ButtonForegroundColor = white;
             bar.ButtonHoverForegroundColor = white;
             bar.ButtonPressedForegroundColor = white;
-            bar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(255, 0x33, 0x26, 0x1F);
-            bar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(255, 0x4A, 0x36, 0x2C);
-            bar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 0x9A, 0x90, 0x8A);
+            bar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(255, 0x2B, 0x2A, 0x34);
+            bar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(255, 0x3A, 0x39, 0x45);
+            bar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 0x9C, 0x9B, 0xA5);
         })));
 #endif
 

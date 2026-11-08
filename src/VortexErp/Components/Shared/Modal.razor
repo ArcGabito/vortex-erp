@@ -1,3 +1,5 @@
+@implements IDisposable
+@inject BackButton Back
 @* Diálogo. No se cierra al tocar el fondo, para no perder lo que se estaba escribiendo. *@
 <div class="modal-backdrop">
     <div class="modal @Size" role="dialog" aria-modal="true" aria-label="@Title">
@@ -33,4 +35,14 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Footer { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+
+    private IDisposable? _back;
+
+    protected override void OnInitialized() => _back = Back.Register(() =>
+    {
+        _ = InvokeAsync(() => OnClose.InvokeAsync());
+        return true;
+    });
+
+    public void Dispose() => _back?.Dispose();
 }

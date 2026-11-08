@@ -112,7 +112,9 @@ public static class Fmt
 
     public static string Money(decimal value, string currency) => VortexApi.Suite.Money.Currencies.Get(currency).Format(value, Culture);
 
-    public static string MoneyCompact(decimal value, string currency) => $"{Symbol(currency)} {Compact(value)}";
+    /// <summary>Monto abreviado desde 10 mil ("S/ 12.5 mil"); por debajo, con sus decimales ("S/ 18.50").</summary>
+    public static string MoneyCompact(decimal value, string currency) =>
+        Math.Abs(value) < 10_000 ? Money(value, currency) : $"{Symbol(currency)} {Compact(value)}";
 
     public static string Symbol(string currency) => VortexApi.Suite.Money.Currencies.Get(currency).Symbol;
 

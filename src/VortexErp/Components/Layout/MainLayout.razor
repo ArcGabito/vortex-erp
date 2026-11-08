@@ -2,6 +2,8 @@
 @implements IDisposable
 @inject AppSession Session
 @inject NavigationManager Nav
+@inject BackButton Back
+@inject IJSRuntime JS
 
 @if (Session.IsSignedIn)
 {
@@ -96,12 +98,28 @@
     private bool _menuOpen, _userMenu;
     private int _toInvoice, _overdue;
     private ErrorBoundary? _boundary;
+    private IDisposable? _back;
 
     protected override void OnInitialized()
     {
         Session.Changed += OnSessionChanged;
         Session.DataChanged += OnDataChanged;
         Nav.LocationChanged += OnLocationChanged;
+        _back = Back.Register(OnBack);
+    }
+
+    /// <summary>Atrás (Android): cierra el menú; fuera del panel vuelve a la página anterior; en el panel deja salir de la app.</summary>
+    private bool OnBack()
+    {
+        if (_menuOpen)
+        {
+            _ = InvokeAsync(() => { _menuOpen = false; StateHasChanged(); });
+            return true;
+        }
+        if (!Session.IsSignedIn || Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Length == 0)
+            return false;
+        _ = InvokeAsync(async () => await JS.InvokeVoidAsync("history.back"));
+        return true;
     }
 
     protected override async Task OnParametersSetAsync()
@@ -145,5 +163,6 @@
         Session.Changed -= OnSessionChanged;
         Session.DataChanged -= OnDataChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        _back?.Dispose();
     }
 }
