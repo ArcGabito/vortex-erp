@@ -29,7 +29,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Hecho | 2 |
 | ERP-07 | Listas de precios y descuentos por cliente | Parcial: descuento habitual por cliente | 3a |
 | ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Hecho | 3a |
-| ERP-09 | Facturación de despachos parciales | Pendiente | 3 |
+| ERP-09 | Facturación de despachos parciales | Hecho | 3b |
 | ERP-10 | Facturación recurrente (suscripciones, alquileres) | Pendiente | 3 |
 
 ### Cobranzas
@@ -39,7 +39,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-15 | Cobros parciales y cuentas por cobrar con lo vencido | Hecho | — |
 | ERP-16 | Antigüedad de saldos (0-30, 31-60, 61-90, +90) | Hecho | 2 |
 | ERP-17 | Estado de cuenta del cliente en PDF | Hecho | 2 |
-| ERP-18 | Recordatorios de cobranza por correo o WhatsApp | Pendiente | 3 |
+| ERP-18 | Recordatorios de cobranza por correo o WhatsApp | Hecho | 3b |
 | ERP-19 | Anticipos y su aplicación a comprobantes | Pendiente | 3 |
 | ERP-20 | Retenciones, percepciones y detracciones | Pendiente | 7 |
 
@@ -188,6 +188,15 @@ lista con el descuento del cliente; si lo que debe (comprobantes con saldo más 
 pedido supera el límite, el pedido queda **por aprobar**: `order.created` lleva `approvalStatus: "pending"`, no se
 factura y el WMS no lo prepara hasta `order.approved` (permiso `order.approve_credit`). El plazo del cliente se propone al
 facturar y se usa en las ventas de caja al crédito. Pruebas en `CreditTests`.
+
+**Estado 3b (2026-11):** hecha. Cada `shipment.dispatched` del WMS se guarda como despacho del pedido con sus líneas
+(sin líneas, todo lo que faltaba); con `partial: true` el pedido queda **despachado en parte**. Cada despacho se factura
+por separado (lo despachado al precio del pedido) y `invoice.issued` lleva `shipmentId` para que los demás equipos del ERP
+lo enlacen; si ya se facturó una parte, el pedido entero no, y al revés. Anular la factura libera esa parte. Recordatorios
+de cobranza desde Cobranzas: mensaje armado con los comprobantes vencidos (número, vencimiento, días y saldo) que se
+abre en WhatsApp o en el correo y queda registrado (último recordatorio por cliente y auditoría). Pruebas en
+`ShipmentsTests`. Quedan para la 3c: anticipos (ERP-19), facturación recurrente (ERP-10) y listas de precios compartidas
+(ERP-07, con el hub).
 
 ## Fase 4: compras, cuentas por pagar y tesorería · L
 

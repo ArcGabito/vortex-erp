@@ -215,5 +215,20 @@ internal static class Schema
         ALTER TABLE sales_orders ADD COLUMN approved_at TEXT;
         DELETE FROM sync_cursors WHERE stream = 'master';
         """,
+        // 6: despachos parciales y cobranza (fase 3b). Cada despacho del WMS con sus líneas (un pedido puede salir en
+        // partes y cada parte se factura por separado) y los recordatorios de cobranza enviados.
+        """
+        CREATE TABLE order_shipments (
+            id TEXT PRIMARY KEY, order_id TEXT NOT NULL, number TEXT, dispatched_at TEXT NOT NULL, partial INTEGER NOT NULL,
+            carrier TEXT, tracking_number TEXT, invoice_id TEXT);
+        CREATE INDEX ix_order_shipments_order ON order_shipments (order_id);
+        CREATE TABLE order_shipment_lines (
+            shipment_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL, PRIMARY KEY (shipment_id, item_id));
+        ALTER TABLE invoices ADD COLUMN shipment_id TEXT;
+        CREATE TABLE collection_reminders (
+            id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, channel TEXT NOT NULL, sent_at TEXT NOT NULL, amount REAL NOT NULL,
+            user_name TEXT);
+        CREATE INDEX ix_collection_reminders_customer ON collection_reminders (customer_id, sent_at);
+        """,
     ];
 }

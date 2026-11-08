@@ -99,18 +99,43 @@ public static class OrderStatuses
 {
     public const string Open = "open";
     public const string Dispatched = "dispatched";
+
+    /// <summary>Salió una parte; el resto sigue pendiente en el WMS.</summary>
+    public const string Partial = "partial";
     public const string Cancelled = "cancelled";
+}
+
+/// <summary>Un despacho del WMS (todo el pedido o una parte), con lo que salió y su comprobante si ya se facturó.</summary>
+public sealed record ShipmentRow(Guid Id, Guid OrderId, string? Number, DateTimeOffset DispatchedAt, bool Partial, string? Carrier,
+    string? TrackingNumber, Guid? InvoiceId, string? InvoiceNumber, IReadOnlyList<OrderLineRow> Lines)
+{
+    public decimal Total => Lines.Sum(l => l.Total);
+}
+
+/// <summary>Recordatorio de cobranza listo para enviar: comprobantes vencidos del cliente y el mensaje armado.</summary>
+public sealed record CollectionReminder(Guid CustomerId, string CustomerName, string? Phone, string? Email, string CurrencyCode,
+    decimal Overdue, IReadOnlyList<InvoiceRow> Invoices, string Message, DateTimeOffset? LastSentAt);
+
+public static class ReminderChannels
+{
+    public const string WhatsApp = "whatsapp";
+    public const string Email = "email";
 }
 
 public sealed record OrderRow(
     Guid Id, string Number, string Source, Guid? CustomerId, string? CustomerName, Guid? SiteId, string? SiteName, Guid? QuoteId,
     string Status, string CurrencyCode, decimal Total, DateTimeOffset CreatedAt, string? UserName, DateTimeOffset? DispatchedAt,
     string? ShipmentNumber, string? Carrier, string? TrackingNumber, Guid? InvoiceId, string? InvoiceNumber, int LineCount,
-    string? Approval = null, string? ApprovedBy = null)
+    string? Approval = null, string? ApprovedBy = null, int PendingShipments = 0, int InvoicedShipments = 0)
 {
     /// <summary>Superó el límite de crédito del cliente: no se prepara ni se factura hasta que alguien lo apruebe.</summary>
     public bool PendingApproval => Approval == OrderApprovals.Pending;
-    public bool CanInvoice => Status != OrderStatuses.Cancelled && InvoiceId is null && CustomerId is not null && !PendingApproval;
+    /// <summary>Se factura el pedido entero (si ningún despacho se facturó por separado).</summary>
+    public bool CanInvoice => Status != OrderStatuses.Cancelled && InvoiceId is null && CustomerId is not null && !PendingApproval &&
+                              InvoicedShipments == 0;
+
+    /// <summary>Tiene despachos que se pueden facturar por separado.</summary>
+    public bool CanInvoiceShipments => InvoiceId is null && CustomerId is not null && PendingShipments > 0;
     public bool CanCancel => Status == OrderStatuses.Open && InvoiceId is null;
 }
 

@@ -56,7 +56,7 @@ public sealed record InvoiceLine(Guid? ItemId, string Description, decimal Quant
 public sealed record InvoiceIssued(
     Guid InvoiceId, string Number, Guid? CustomerId, Guid? SaleId, Guid? OrderId, DateTimeOffset IssuedAt, decimal Total,
     string CurrencyCode, string? Kind = null, decimal Subtotal = 0, decimal Tax = 0, DateOnly? DueDate = null,
-    IReadOnlyList<InvoiceLine>? Lines = null, decimal Paid = 0, decimal? ExchangeRate = null);
+    IReadOnlyList<InvoiceLine>? Lines = null, decimal Paid = 0, decimal? ExchangeRate = null, Guid? ShipmentId = null);
 
 /// <summary>
 /// <c>payment.received</c>. Extiende v1 con <c>number</c> y <c>reference</c>. <c>amount</c> va siempre en la moneda del
@@ -120,4 +120,5 @@ public sealed record GoodsReceived(Guid ReceiptId, string? Number, Guid? Purchas
 public sealed record StockAdjusted(Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string? Reason);
 
 public sealed record ShipmentDispatched(
-    Guid ShipmentId, Guid OrderId, Guid? CustomerId, string? Carrier, string? TrackingNumber, string? Number);
+    Guid ShipmentId, Guid OrderId, Guid? CustomerId, string? Carrier, string? TrackingNumber, string? Number,
+    IReadOnlyList<QuantityLine>? Lines = null, bool? Partial = null);

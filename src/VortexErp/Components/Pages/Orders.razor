@@ -100,6 +100,10 @@
                                         {
                                             <button @onclick="() => StartInvoiceAsync(o)"><Icon Name="receipt" Size="18" />@T("orders.emitir_comprobante")</button>
                                         }
+                                        @if (o.CanInvoiceShipments && Session.Can(ErpPermissions.IssueInvoice))
+                                        {
+                                            <button @onclick="() => OpenAsync(o)"><Icon Name="truck" Size="18" />@T("orders.facturar_despachos")</button>
+                                        }
                                         @if (o.CanCancel && Session.Can(ErpPermissions.CancelOrder))
                                         {
                                             <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />@T("orders.cancelar")</button>
@@ -229,6 +233,28 @@
                 </table>
             </div>
             <dl class="totals"><dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(d.Total, d.CurrencyCode)</dd></dl>
+            @if (_shipments.Count > 0)
+            {
+                <h4 class="section-title">@T("orders.despachos")</h4>
+                @foreach (var s in _shipments)
+                {
+                    <div class="list-row shipment-row" @key="s.Id">
+                        <div class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@(s.Number ?? "—") · @Fmt.DateTime(s.DispatchedAt)@(s.Partial ? T("orders.parcial_sufijo") : "")</span>
+                            <span class="t2">@string.Join(", ", s.Lines.Select(l => $"{Fmt.Qty(l.Quantity)} × {l.ItemName}"))</span>
+                        </div>
+                        <strong class="end">@Fmt.Money(s.Total, d.CurrencyCode)</strong>
+                        @if (s.InvoiceNumber is { } inv)
+                        {
+                            <span class="tag">@inv</span>
+                        }
+                        else if (d.InvoiceId is null && d.CustomerId is not null && Session.Can(ErpPermissions.IssueInvoice))
+                        {
+                            <button class="btn btn-sm" @onclick="() => StartShipmentInvoiceAsync(d, s)">@T("orders.facturar")</button>
+                        }
+                    </div>
+                }
+            }
         </ChildContent>
         <Footer>
             @if (d.CanCancel && Session.Can(ErpPermissions.CancelOrder))
@@ -253,7 +279,7 @@
 
 @if (_invoicing is { } inv)
 {
-    <Modal Title="@(T("orders.comprobante_del_pedido", inv.Number))" Subtitle="@inv.CustomerName" Size="sm" Error="@_error" OnClose="() => _invoicing = null">
+    <Modal Title="@(_invoicingShipment is { } sh ? T("orders.comprobante_del_despacho", sh.Number ?? inv.Number) : T("orders.comprobante_del_pedido", inv.Number))" Subtitle="@inv.CustomerName" Size="sm" Error="@_error" OnClose="() => _invoicing = null">
         <ChildContent>
             <div class="segmented">
                 <button class="@(_kind == InvoiceKinds.Invoice ? "on" : "")" @onclick="() => _kind = InvoiceKinds.Invoice">@T("orders.factura")</button>
@@ -263,7 +289,7 @@
                 <label>@T("orders.plazo_de_pago_dias")</label>
                 <input class="control" type="number" min="0" step="1" @bind="_creditDays" />
             </div>
-            <dl class="totals"><dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(inv.Total, inv.CurrencyCode)</dd></dl>
+            <dl class="totals"><dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(_invoicingShipment?.Total ?? inv.Total, inv.CurrencyCode)</dd></dl>
         </ChildContent>
         <Footer>
             <button class="btn" @onclick="() => _invoicing = null">@T("orders.cancelar")</button>
@@ -295,6 +321,8 @@
 
     private NewOrder? _new;
     private OrderRow? _detail, _invoicing;
+    private ShipmentRow? _invoicingShipment;
+    private IReadOnlyList<ShipmentRow> _shipments = [];
     private IReadOnlyList<OrderLineRow> _lines = [];
     private string _kind = InvoiceKinds.Invoice;
     private int _creditDays = InvoiceService.DefaultCreditDays;
@@ -416,6 +444,7 @@
     private async Task OpenAsync(OrderRow order)
     {
         _lines = await Erp.Orders.GetLinesAsync(order.Id);
+        _shipments = await Erp.Orders.GetShipmentsAsync(order.Id);
         _detail = order;
     }
 
@@ -425,8 +454,15 @@
         _detail = null;
     }
 
+    private async Task StartShipmentInvoiceAsync(OrderRow order, ShipmentRow shipment)
+    {
+        await StartInvoiceAsync(order);
+        _invoicingShipment = shipment;
+    }
+
     private async Task StartInvoiceAsync(OrderRow order)
     {
+        _invoicingShipment = null;
         _error = null;
         _kind = InvoiceKinds.Invoice;
         _creditDays = await Erp.Invoices.GetTermDaysAsync(order.CustomerId);
@@ -440,7 +476,9 @@
             return;
         _busy = true;
         string? number = null;
-        _error = await TryAsync(async () => number = await Erp.Invoices.IssueFromOrderAsync(order.Id, _kind, _creditDays));
+        _error = await TryAsync(async () => number = _invoicingShipment is { } shipment
+            ? await Erp.Invoices.IssueFromShipmentAsync(shipment.Id, _kind, _creditDays)
+            : await Erp.Invoices.IssueFromOrderAsync(order.Id, _kind, _creditDays));
         _busy = false;
         if (_error is null)
         {

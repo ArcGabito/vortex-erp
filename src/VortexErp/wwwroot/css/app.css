@@ -1583,3 +1583,8 @@ table.data td { font-size: 13px; }
     .credit-summary { grid-template-columns: minmax(0, 1fr); }
     .credit-summary > div { flex-direction: row; justify-content: space-between; align-items: baseline; }
 }
+
+/* ---------- Despachos del pedido ---------- */
+
+.section-title { font-size: 14px; margin: 8px 0 0; }
+.shipment-row { flex-wrap: wrap; gap: 8px 12px; }

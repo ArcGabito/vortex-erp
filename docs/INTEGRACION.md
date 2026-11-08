@@ -54,6 +54,7 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 
 Extensiones de v1 (campos agregados, ninguno quitado):
 
+- `invoice.issued`: `shipmentId` si factura un despacho (una parte del pedido).
 - `order.created`: `quoteId` si el pedido sale de una cotización del CRM, y `approvalStatus: "pending"` si supera el
   límite de crédito del cliente: el WMS no lo prepara y no se factura hasta recibir `order.approved` (`orderId`,
   `number`, `approvedBy`).
@@ -87,7 +88,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `deal.won` (CRM) | Se registra la oportunidad ganada |
 | `order.created` (CRM, WMS, otro equipo ERP) | Crea el pedido (si viene de una cotización, la vincula; si llega por aprobar, queda así) |
 | `order.approved` (otro equipo ERP) | El pedido por aprobar ya se puede facturar |
-| `shipment.dispatched` (WMS) | Marca el pedido como despachado con el transportista y la guía |
+| `shipment.dispatched` (WMS) | Guarda el despacho con sus líneas; el pedido queda despachado (o despachado en parte con `partial: true`) y cada despacho se puede facturar |
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |

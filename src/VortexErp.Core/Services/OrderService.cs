@@ -75,7 +75,9 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         await using var c = await Db.OpenAsync(ct);
         var where = $"""
             WHERE (1 = 1{SiteFilterOrNull("o.site_id")})
-              AND ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL)
+              AND ($status IS NULL OR o.status = $status OR ($status = 'uninvoiced' AND o.status <> 'cancelled' AND o.invoice_id IS NULL
+                   AND (NOT EXISTS (SELECT 1 FROM order_shipments s WHERE s.order_id = o.id)
+                        OR EXISTS (SELECT 1 FROM order_shipments s WHERE s.order_id = o.id AND s.invoice_id IS NULL)))
                    OR ($status = 'pending_approval' AND o.approval = 'pending' AND o.status <> 'cancelled'))
               AND ($search IS NULL OR o.number LIKE $like OR p.name LIKE $like OR p.document_number LIKE $like)
             """;
@@ -158,12 +160,75 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
             """, tx, ("$id", e.DealId), ("$customer", e.CustomerId), ("$amount", e.Amount), ("$currency", e.CurrencyCode ?? "PEN"),
             ("$quote", e.QuoteId), ("$at", at));
 
-    internal static Task ApplyDispatchedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, ShipmentDispatched e) =>
-        c.ExecAsync("""
-            UPDATE sales_orders SET status = 'dispatched', dispatched_at = $at, shipment_number = $number, carrier = $carrier,
+    /// <summary>
+    /// <c>shipment.dispatched</c> del WMS: guarda el despacho con lo que salió (sus líneas; sin líneas, todo lo que faltaba)
+    /// y el pedido queda despachado o despachado en parte. Cada despacho se puede facturar por separado.
+    /// </summary>
+    internal static async Task ApplyDispatchedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, ShipmentDispatched e)
+    {
+        var status = await c.ScalarAsync<string?>("SELECT status FROM sales_orders WHERE id = $id", tx, ("$id", e.OrderId));
+        if (status is null || await c.ScalarAsync<long>("SELECT COUNT(*) FROM order_shipments WHERE id = $id", tx, ("$id", e.ShipmentId)) > 0)
+            return;
+        var lines = e.Lines is { Count: > 0 }
+            ? e.Lines.GroupBy(l => l.ItemId).Select(g => (ItemId: g.Key, Quantity: g.Sum(l => l.Quantity))).ToList()
+            : await RemainingAsync(c, tx, e.OrderId);
+        await c.ExecAsync("""
+            INSERT INTO order_shipments (id, order_id, number, dispatched_at, partial, carrier, tracking_number)
+            VALUES ($id, $order, $number, $at, $partial, $carrier, $tracking)
+            """, tx, ("$id", e.ShipmentId), ("$order", e.OrderId), ("$number", e.Number), ("$at", at), ("$partial", e.Partial == true),
+            ("$carrier", e.Carrier), ("$tracking", e.TrackingNumber));
+        foreach (var l in lines.Where(l => l.Quantity > 0))
+            await c.ExecAsync("INSERT INTO order_shipment_lines (shipment_id, item_id, quantity) VALUES ($id, $item, $qty)", tx,
+                ("$id", e.ShipmentId), ("$item", l.ItemId), ("$qty", l.Quantity));
+        if (status == OrderStatuses.Cancelled)
+            return;
+        await c.ExecAsync("""
+            UPDATE sales_orders SET status = $status, dispatched_at = $at, shipment_number = $number, carrier = $carrier,
                                     tracking_number = $tracking
-            WHERE id = $id AND status = 'open'
-            """, tx, ("$id", e.OrderId), ("$at", at), ("$number", e.Number), ("$carrier", e.Carrier), ("$tracking", e.TrackingNumber));
+            WHERE id = $id
+            """, tx, ("$id", e.OrderId), ("$status", e.Partial == true ? OrderStatuses.Partial : OrderStatuses.Dispatched), ("$at", at),
+            ("$number", e.Number), ("$carrier", e.Carrier), ("$tracking", e.TrackingNumber));
+    }
+
+    /// <summary>Lo que falta despachar del pedido (pedido menos lo ya despachado), por artículo.</summary>
+    private static async Task<List<(Guid ItemId, decimal Quantity)>> RemainingAsync(SqliteConnection c, SqliteTransaction tx, Guid orderId) =>
+        await c.QueryAsync("""
+            SELECT l.item_id, SUM(l.quantity) - COALESCE((SELECT SUM(sl.quantity) FROM order_shipment_lines sl
+                JOIN order_shipments s ON s.id = sl.shipment_id WHERE s.order_id = $id AND sl.item_id = l.item_id), 0) AS remaining
+            FROM sales_order_lines l WHERE l.order_id = $id GROUP BY l.item_id
+            """, r => (r.Guid("item_id"), r.Dec("remaining")), tx, ("$id", orderId));
+
+    /// <summary>Despachos del pedido, con lo que salió valorizado al precio del pedido.</summary>
+    public async Task<IReadOnlyList<ShipmentRow>> GetShipmentsAsync(Guid orderId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await ShipmentsAsync(c, null, orderId);
+    }
+
+    internal static async Task<List<ShipmentRow>> ShipmentsAsync(SqliteConnection c, SqliteTransaction? tx, Guid orderId, Guid? shipmentId = null)
+    {
+        var prices = (await LinesAsync(c, tx, orderId)).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.First());
+        var shipments = await c.QueryAsync("""
+            SELECT s.*, i.number AS invoice_number FROM order_shipments s LEFT JOIN invoices i ON i.id = s.invoice_id
+            WHERE s.order_id = $id AND ($shipment IS NULL OR s.id = $shipment) ORDER BY s.dispatched_at
+            """, r => new
+            {
+                Id = r.Guid("id"), Number = r.StrOrNull("number"), At = r.Time("dispatched_at"), Partial = r.Bool("partial"),
+                Carrier = r.StrOrNull("carrier"), Tracking = r.StrOrNull("tracking_number"), Invoice = r.GuidOrNull("invoice_id"),
+                InvoiceNumber = r.StrOrNull("invoice_number"),
+            }, tx, ("$id", orderId), ("$shipment", shipmentId));
+        var result = new List<ShipmentRow>();
+        foreach (var s in shipments)
+        {
+            var lines = await c.QueryAsync("SELECT item_id, quantity FROM order_shipment_lines WHERE shipment_id = $id",
+                r => (Item: r.Guid("item_id"), Qty: r.Dec("quantity")), tx, ("$id", s.Id));
+            result.Add(new ShipmentRow(s.Id, orderId, s.Number, s.At, s.Partial, s.Carrier, s.Tracking, s.Invoice, s.InvoiceNumber,
+                lines.Select((l, i) => prices.TryGetValue(l.Item, out var p)
+                    ? new OrderLineRow(i + 1, l.Item, p.Sku, p.ItemName, l.Qty, p.UnitPrice)
+                    : new OrderLineRow(i + 1, l.Item, "?", "?", l.Qty, 0)).ToList()));
+        }
+        return result;
+    }
 
     // ---------- Internos ----------
 
@@ -285,7 +350,9 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
 
     private const string Select = """
         SELECT o.*, p.name AS customer_name, t.name AS site_name, i.number AS invoice_number,
-               (SELECT COUNT(*) FROM sales_order_lines l WHERE l.order_id = o.id) AS line_count
+               (SELECT COUNT(*) FROM sales_order_lines l WHERE l.order_id = o.id) AS line_count,
+               (SELECT COUNT(*) FROM order_shipments s WHERE s.order_id = o.id AND s.invoice_id IS NULL) AS pending_shipments,
+               (SELECT COUNT(*) FROM order_shipments s WHERE s.order_id = o.id AND s.invoice_id IS NOT NULL) AS invoiced_shipments
         FROM sales_orders o LEFT JOIN parties p ON p.id = o.customer_id LEFT JOIN sites t ON t.id = o.site_id
              LEFT JOIN invoices i ON i.id = o.invoice_id
         """;
@@ -298,7 +365,7 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         r.StrOrNull("site_name"), r.GuidOrNull("quote_id"), r.Str("status"), r.Str("currency_code"), r.Dec("total"), r.Time("created_at"),
         r.StrOrNull("user_name"), r.TimeOrNull("dispatched_at"), r.StrOrNull("shipment_number"), r.StrOrNull("carrier"),
         r.StrOrNull("tracking_number"), r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"), r.Int("line_count"),
-        r.StrOrNull("approval"), r.StrOrNull("approved_by"));
+        r.StrOrNull("approval"), r.StrOrNull("approved_by"), r.Int("pending_shipments"), r.Int("invoiced_shipments"));
 
     internal static async Task<List<OrderLineRow>> LinesAsync(SqliteConnection c, SqliteTransaction? tx, Guid orderId) =>
         await c.QueryAsync("""

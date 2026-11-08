@@ -41,6 +41,31 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     }
 
     /// <summary>
+    /// Comprobante de un despacho (un pedido que salió en partes se factura por parte): las líneas son lo despachado al
+    /// precio del pedido. No se puede si el pedido ya se facturó entero.
+    /// </summary>
+    public Task<string> IssueFromShipmentAsync(Guid shipmentId, string kind, int creditDays = DefaultCreditDays, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.IssueInvoice);
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var orderId = await c.ScalarAsync<string?>("SELECT order_id FROM order_shipments WHERE id = $id", tx, ("$id", shipmentId));
+            Require(orderId is not null, T("error.el_despacho_no_existe"));
+            var order = (await OrderService.GetAsync(c, tx, Guid.Parse(orderId!)))!;
+            Require(order.InvoiceId is null, T("error.el_pedido_ya_tiene_comprobante"));
+            Require(order.CustomerId is not null && !order.PendingApproval, T("error.este_pedido_no_se_puede"));
+            var shipment = (await OrderService.ShipmentsAsync(c, tx, order.Id, shipmentId)).Single();
+            Require(shipment.InvoiceId is null, T("error.el_despacho_ya_tiene_comprobante", shipment.Number ?? ""));
+            var codes = await TaxCodesAsync(c, tx, shipment.Lines.Select(l => l.ItemId));
+            var invoiceLines = shipment.Lines.Select(l => new InvoiceLine(l.ItemId, l.ItemName, l.Quantity, l.UnitPrice, l.Total, codes[l.ItemId])).ToList();
+            var (id, number) = await IssueAsync(c, tx, now, kind, order.CustomerId, order.Id, null, order.CurrencyCode, invoiceLines,
+                paid: 0, creditDays, shipmentId);
+            await c.ExecAsync("UPDATE order_shipments SET invoice_id = $invoice WHERE id = $id", tx, ("$id", shipmentId), ("$invoice", id));
+            return number;
+        }, ct);
+    }
+
+    /// <summary>
     /// Comprobante de una venta de caja. Lo cobrado en caja queda pagado; solo la parte al crédito queda por cobrar.
     /// El POS anota el número en la venta al recibir <c>invoice.issued</c>.
     /// </summary>
@@ -66,7 +91,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     }
 
     private async Task<(Guid Id, string Number)> IssueAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string kind,
-        Guid? customerId, Guid? orderId, Guid? saleId, string currency, IReadOnlyList<InvoiceLine> lines, decimal paid, int creditDays)
+        Guid? customerId, Guid? orderId, Guid? saleId, string currency, IReadOnlyList<InvoiceLine> lines, decimal paid, int creditDays,
+        Guid? shipmentId = null)
     {
         Require(kind is InvoiceKinds.Invoice or InvoiceKinds.Receipt, T("error.elige_factura_boleta"));
         Require(lines.Count > 0, T("error.el_documento_no_tiene_lineas"));
@@ -89,7 +115,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var number = await DocumentNumbers.NextInvoiceAsync(c, tx, kind, Context.DeviceTag);
         var dueDate = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime).AddDays(Math.Max(0, creditDays));
         var e = new InvoiceIssued(id, number, customerId, saleId, orderId, now, total, currency, kind, subtotal, tax, dueDate, lines,
-            Math.Min(paid, total), rate == 1m ? null : rate);
+            Math.Min(paid, total), rate == 1m ? null : rate, shipmentId);
         await InsertInvoiceAsync(c, tx, e, "local", Context.UserName);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceIssued, e, subjectType: "invoice", subjectId: number, id: id);
         await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", id, number, $"{(kind == InvoiceKinds.Invoice ? "Factura" : "Boleta")} por {total:0.##} {currency}");
@@ -500,7 +526,9 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         if (await c.ScalarAsync<long>("SELECT COUNT(*) FROM invoices WHERE id = $id", tx, ("$id", e.InvoiceId)) > 0)
             return;
         await InsertInvoiceAsync(c, tx, e, "remote", null);
-        if (e.OrderId is { } order)
+        if (e.ShipmentId is { } shipment)
+            await c.ExecAsync("UPDATE order_shipments SET invoice_id = $invoice WHERE id = $id", tx, ("$id", shipment), ("$invoice", e.InvoiceId));
+        else if (e.OrderId is { } order)
             await c.ExecAsync("UPDATE sales_orders SET invoice_id = $invoice WHERE id = $id", tx, ("$id", order), ("$invoice", e.InvoiceId));
         if (e.SaleId is { } sale)
             await c.ExecAsync("UPDATE pos_sales SET invoice_id = $invoice WHERE id = $id", tx, ("$id", sale), ("$invoice", e.InvoiceId));
@@ -593,6 +621,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             UPDATE invoices SET status = 'voided', voided_at = $at, void_reason = $reason WHERE id = $id AND status = 'issued'
             """, tx, ("$id", e.InvoiceId), ("$at", at), ("$reason", e.Reason));
         await c.ExecAsync("UPDATE sales_orders SET invoice_id = NULL WHERE invoice_id = $id", tx, ("$id", e.InvoiceId));
+        await c.ExecAsync("UPDATE order_shipments SET invoice_id = NULL WHERE invoice_id = $id", tx, ("$id", e.InvoiceId));
         await c.ExecAsync("UPDATE pos_sales SET invoice_id = NULL WHERE invoice_id = $id", tx, ("$id", e.InvoiceId));
     }
 
@@ -605,12 +634,13 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     {
         await c.ExecAsync("""
             INSERT INTO invoices (id, number, kind, origin, customer_id, order_id, sale_id, issued_at, due_date, currency_code, subtotal,
-                                  tax, total, paid, user_name, exchange_rate)
-            VALUES ($id, $number, $kind, $origin, $customer, $order, $sale, $at, $due, $currency, $subtotal, $tax, $total, $paid, $user, $rate)
+                                  tax, total, paid, user_name, exchange_rate, shipment_id)
+            VALUES ($id, $number, $kind, $origin, $customer, $order, $sale, $at, $due, $currency, $subtotal, $tax, $total, $paid, $user, $rate,
+                    $shipment)
             """, tx, ("$id", e.InvoiceId), ("$number", e.Number), ("$kind", e.Kind ?? InvoiceKinds.Invoice), ("$origin", origin),
             ("$customer", e.CustomerId), ("$order", e.OrderId), ("$sale", e.SaleId), ("$at", e.IssuedAt),
             ("$due", e.DueDate?.ToString("yyyy-MM-dd")), ("$currency", e.CurrencyCode), ("$subtotal", e.Subtotal), ("$tax", e.Tax),
-            ("$total", e.Total), ("$paid", e.Paid), ("$user", userName), ("$rate", e.ExchangeRate));
+            ("$total", e.Total), ("$paid", e.Paid), ("$user", userName), ("$rate", e.ExchangeRate), ("$shipment", e.ShipmentId));
         var lineNo = 0;
         foreach (var l in e.Lines ?? [])
         {
@@ -662,6 +692,61 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     }
 
     private string Today() => DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime).ToString("yyyy-MM-dd");
+
+    // ---------- Cobranza ----------
+
+    /// <summary>
+    /// Recordatorio de cobranza del cliente en una moneda: sus comprobantes vencidos y un mensaje listo para enviar por
+    /// WhatsApp o correo (con número, fecha de vencimiento y saldo de cada uno). Null si no tiene nada vencido.
+    /// </summary>
+    public async Task<CollectionReminder?> GetReminderAsync(Guid customerId, string currency, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        var today = DateOnly.ParseExact(Today(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var overdue = (await c.QueryAsync($"""
+            {Select} WHERE i.customer_id = $customer AND i.currency_code = $currency AND i.status = 'issued'
+                       AND i.total + i.debited - i.credited - i.paid > 0 AND i.due_date < $today
+            ORDER BY i.due_date
+            """, Read, null, ("$customer", customerId), ("$currency", currency), ("$today", Today()))).ToList();
+        if (overdue.Count == 0)
+            return null;
+        var party = await c.FirstOrDefaultAsync("SELECT name, phone, email FROM parties WHERE id = $id",
+            r => new { Name = r.Str("name"), Phone = r.StrOrNull("phone"), Email = r.StrOrNull("email") }, null, ("$id", customerId));
+        var company = await c.ScalarAsync<string?>("SELECT COALESCE(trade_name, legal_name) FROM company WHERE id = 1");
+        var money = VortexApi.Suite.Money.Currencies.Get(currency);
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("es-PE");
+        var total = overdue.Sum(i => i.Balance);
+        var detail = string.Join("\n", overdue.Select(i => T("cobranza.linea", i.Number, i.DueDate!.Value.ToString("dd/MM/yyyy", culture),
+            money.Format(i.Balance, culture), today.DayNumber - i.DueDate.Value.DayNumber)));
+        var message = T("cobranza.mensaje", party?.Name ?? "", money.Format(total, culture), detail, company ?? "");
+        var last = await c.ScalarAsync<string?>("SELECT MAX(sent_at) FROM collection_reminders WHERE customer_id = $id", null, ("$id", customerId));
+        return new CollectionReminder(customerId, party?.Name ?? "?", party?.Phone, party?.Email, currency, total, overdue, message,
+            last is null ? null : DateTimeOffset.Parse(last, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>Deja constancia de que se envió el recordatorio (canal, monto vencido y quién) y lo audita.</summary>
+    public Task RecordReminderAsync(Guid customerId, string channel, decimal amount, CancellationToken ct = default)
+    {
+        RequirePermission(ErpPermissions.RegisterPayment);
+        Require(channel is ReminderChannels.WhatsApp or ReminderChannels.Email, T("error.canal_invalido"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            await c.ExecAsync("""
+                INSERT INTO collection_reminders (id, customer_id, channel, sent_at, amount, user_name) VALUES ($id, $customer, $channel, $at, $amount, $user)
+                """, tx, ("$id", Guid.NewGuid()), ("$customer", customerId), ("$channel", channel), ("$at", now), ("$amount", amount),
+                ("$user", Context.UserName));
+            await AuditAsync(c, tx, now, "collection.reminded", "party", customerId, null, $"Recordatorio por {channel}: {amount:0.00} vencido");
+            return 0;
+        }, ct);
+    }
+
+    /// <summary>Último recordatorio de cobranza por cliente.</summary>
+    public async Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetLastRemindersAsync(CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return (await c.QueryAsync("SELECT customer_id, MAX(sent_at) AS last FROM collection_reminders GROUP BY customer_id",
+            r => (Id: r.Guid("customer_id"), At: r.Time("last")))).ToDictionary(x => x.Id, x => x.At);
+    }
 
     private const string Select = """
         SELECT i.*, p.name AS customer_name, p.document_number AS customer_document

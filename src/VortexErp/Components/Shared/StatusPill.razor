@@ -10,6 +10,8 @@
         o.Status == OrderStatuses.Cancelled ? (T("statuspill.cancelado"), "neutral")
         : o.InvoiceId is not null ? (T("statuspill.facturado"), "good")
         : o.PendingApproval ? (T("statuspill.por_aprobar"), "bad")
+        : o.InvoicedShipments > 0 && o.PendingShipments == 0 && o.Status == OrderStatuses.Dispatched ? (T("statuspill.facturado"), "good")
+        : o.Status == OrderStatuses.Partial ? (T("statuspill.despachado_en_parte"), "info")
         : o.Status == OrderStatuses.Dispatched ? (T("statuspill.despachado"), "info")
         : (T("statuspill.abierto"), "warn");
 
