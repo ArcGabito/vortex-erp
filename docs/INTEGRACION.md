@@ -57,7 +57,6 @@ Extensiones de v1 (campos agregados, ninguno quitado):
 - `invoice.issued`: `kind` (`factura` | `boleta`), `subtotal`, `tax`, `dueDate`, `paid` (lo ya cobrado en caja), `lines` y
   `exchangeRate` (cuánto vale 1 unidad de la moneda del comprobante en la de la empresa el día de emisión; sin él, es la
   misma moneda).
-- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId`, `orderId` y `customerId`.
 - `payment.received`: `number` y `reference`. `amount` va siempre en la moneda del comprobante; si se cobró en la moneda de
   la empresa, `paidAmount` y `paidCurrency` dicen lo recibido, `exchangeRate` el tipo del día y `fxDifference` la diferencia
   de cambio en moneda de la empresa (positiva si es ganancia).
@@ -68,7 +67,7 @@ Contenido de los eventos nuevos (propuestos al hub):
 - `credit_note.issued` / `debit_note.issued`: `noteId`, `number`, `invoiceId`, `invoiceNumber`, `customerId`, `reason`
   (`void`, `return`, `discount`, `correction`, `interest`, `increase`, `penalty`), `issuedAt`, `currencyCode`, `subtotal`,
   `tax`, `total`, `lines` (con `invoiceLineNo` en las devoluciones), `description`, `saleId` y `orderId`.
-- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId` y `orderId`. El pedido o la venta de caja quedan libres para
+- `invoice.voided`: `invoiceId`, `number`, `reason`, `saleId`, `orderId` y `customerId`. El pedido o la venta de caja quedan libres para
   emitir otro comprobante.
 
 El saldo de un comprobante es total + notas de débito − notas de crédito − cobrado; si queda negativo es saldo a favor
