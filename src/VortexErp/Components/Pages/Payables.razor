@@ -26,7 +26,7 @@
                         <span class="two-line" style="flex:1;min-width:0">
                             <span class="t1">@s.SupplierName</span>
                             <span class="t2">
-                                @T("payables.n_facturas", s.Invoices)@(s.Held > 0 ? $" · {T("payables.n_retenidas", s.Held)}" : "")
+                                @(s.Invoices == 1 ? T("payables.una_factura") : T("payables.n_facturas", s.Invoices))@(s.Held > 0 ? $" · {(s.Held == 1 ? T("payables.una_retenida") : T("payables.n_retenidas", s.Held))}" : "")
                             </span>
                             <span class="aging">
                                 @foreach (var (label, amount, tone) in Tramos(s))

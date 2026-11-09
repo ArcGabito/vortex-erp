@@ -655,6 +655,8 @@
   "payables.todas": "All",
   "payables.total": "Total",
   "payables.tres_vias_explica": "With a purchase order it checks each item is on it, nothing is invoiced beyond what was received and the cost matches; otherwise the invoice is put on hold.",
+  "payables.una_factura": "1 invoice",
+  "payables.una_retenida": "1 on hold",
   "payables.vence": "Due",
   "payables.vence_el": "Due on {0}",
   "payables.vence_opcional": "Due (optional)",

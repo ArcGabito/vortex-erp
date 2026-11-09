@@ -655,6 +655,8 @@
   "payables.todas": "Todas",
   "payables.total": "Total",
   "payables.tres_vias_explica": "Con orden de compra se revisa que cada artículo esté en la orden, que no se facture más de lo recibido y que el costo cuadre; si no, la factura queda retenida.",
+  "payables.una_factura": "1 factura",
+  "payables.una_retenida": "1 retenida",
   "payables.vence": "Vence",
   "payables.vence_el": "Vence el {0}",
   "payables.vence_opcional": "Vence (opcional)",
