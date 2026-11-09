@@ -1,0 +1,564 @@
+@page "/tesoreria"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("treasury.tesoreria")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("treasury.tesoreria")</h2>
+            <p>@T("treasury.explica")</p>
+        </div>
+        @if (_canManage)
+        {
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-outline" disabled="@(_accounts.Count < 2)" @onclick="OpenTransfer"><Icon Name="arrows" Size="18" />@T("treasury.transferir")</button>
+                <button class="btn btn-dark" @onclick="() => OpenAccount(null)"><Icon Name="plus" Size="18" />@T("treasury.nueva_cuenta")</button>
+            </div>
+        }
+    </div>
+
+    @if (_accounts.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="bank" Title="@(T("treasury.sin_cuentas"))" Text="@(T("treasury.sin_cuentas_explica"))" />
+    }
+    else
+    {
+        <div class="grid-cards">
+            @foreach (var a in _accounts)
+            {
+                <button class="card account-card @(a.Account.Id == _selected ? "on" : "") @(a.Account.IsActive ? "" : "off")" @key="a.Account.Id" @onclick="() => SelectAsync(a.Account.Id)">
+                    <span class="two-line">
+                        <span class="t1"><Icon Name="@(a.Account.Kind == TreasuryAccountKinds.Cash ? "cash" : "bank")" Size="16" /> @a.Account.Name</span>
+                        <span class="t2">@(string.Join(" · ", new[] { a.Account.Bank, a.Account.Number, a.Account.CurrencyCode }.Where(x => !string.IsNullOrWhiteSpace(x))))</span>
+                    </span>
+                    <strong class="account-balance">@Fmt.Money(a.Balance, a.Account.CurrencyCode)</strong>
+                    <span class="t2">
+                        @if (a.UnmatchedLines > 0)
+                        {
+                            <span class="warn-text">@T("treasury.lineas_sin_pareja", a.UnmatchedLines)</span>
+                        }
+                        else
+                        {
+                            @T("treasury.sin_conciliar", a.Unreconciled)
+                        }
+                    </span>
+                </button>
+            }
+        </div>
+
+        <div class="filters">
+            <div class="segmented">
+                <button class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">@T("treasury.movimientos")</button>
+                <button class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">@T("treasury.conciliacion")</button>
+                <button class="@(_tab == 2 ? "on" : "")" @onclick="LoadFlowAsync">@T("treasury.flujo_de_caja")</button>
+            </div>
+            @if (_tab < 2 && Selected is { } sel && _canManage)
+            {
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    @if (_tab == 0)
+                    {
+                        <button class="btn btn-sm" @onclick="() => _movement = new ManualMovement { On = Today }"><Icon Name="plus" Size="16" />@T("treasury.registrar_movimiento")</button>
+                        <button class="btn btn-sm btn-ghost" @onclick="() => OpenAccount(sel.Account)"><Icon Name="edit" Size="16" />@T("treasury.editar_cuenta")</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="ImportAsync"><Icon Name="download" Size="16" />@T("treasury.importar_extracto")</button>
+                        <button class="btn btn-sm" disabled="@_busy" @onclick="AutoMatchAsync">@T("treasury.conciliar_solo")</button>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_tab == 0)
+        {
+            <div class="card">
+                <div class="card-body">
+                    @if (_movements.Count == 0)
+                    {
+                        <p class="muted" style="margin:0">@T("treasury.sin_movimientos")</p>
+                    }
+                    @foreach (var m in _movements)
+                    {
+                        <div class="list-row" @key="m.Ref">
+                            <span class="two-line" style="flex:1;min-width:0">
+                                <span class="t1">@m.Description</span>
+                                <span class="t2">@Fmt.Date(m.On) · @T("treasury.tipo." + m.Kind)@(m.Reference is { } r ? $" · {r}" : "")</span>
+                            </span>
+                            @if (m.Reconciled)
+                            {
+                                <span title="@(T("treasury.conciliado"))"><Icon Name="check" Size="16" /></span>
+                            }
+                            <strong class="@(m.Amount < 0 ? "bad-text" : "")">@Fmt.Money(m.Amount, m.CurrencyCode)</strong>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (_tab == 1)
+        {
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>@T("treasury.extracto")</h3>
+                        <div class="sub">@T("treasury.extracto_explica")</div>
+                    </div>
+                    <label class="check-row"><input type="checkbox" @bind="_unmatchedOnly" @bind:after="LoadLinesAsync" /><span>@T("treasury.solo_sin_pareja")</span></label>
+                </div>
+                <div class="card-body">
+                    @if (_lines.Count == 0)
+                    {
+                        <p class="muted" style="margin:0">@(_unmatchedOnly ? T("treasury.todo_conciliado") : T("treasury.sin_extracto"))</p>
+                    }
+                    @foreach (var l in _lines)
+                    {
+                        <div class="list-row" @key="l.Id">
+                            <span class="two-line" style="flex:1;min-width:0">
+                                <span class="t1">@l.Description</span>
+                                <span class="t2">@Fmt.Date(l.On)@(l.Reference is { } r ? $" · {r}" : "")@(l.MatchedRef is not null ? $" · {T("treasury.conciliado")}{(l.MatchedBy == "auto" ? $" ({T("treasury.automatico")})" : "")}" : "")</span>
+                            </span>
+                            <strong class="@(l.Amount < 0 ? "bad-text" : "")">@Fmt.Money(l.Amount, Selected?.Account.CurrencyCode ?? "PEN")</strong>
+                            @if (_canManage)
+                            {
+                                @if (l.MatchedRef is null)
+                                {
+                                    <button class="btn btn-sm" @onclick="() => OpenLineAsync(l)">@T("treasury.resolver")</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-ghost" @onclick="() => UnmatchAsync(l)">@T("treasury.deshacer")</button>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (_flow is { } f)
+        {
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>@T("treasury.flujo_proyectado")</h3>
+                        <div class="sub">@T("treasury.flujo_explica")</div>
+                    </div>
+                    <select class="select" style="width:auto" value="@_flowCurrency" @onchange="ChangeCurrencyAsync">
+                        @foreach (var cur in _accounts.Select(a => a.Account.CurrencyCode).Distinct())
+                        {
+                            <option value="@cur">@cur</option>
+                        }
+                    </select>
+                </div>
+                <div class="card-body">
+                    <div class="flow-summary">
+                        <span>@T("treasury.saldo_hoy") <strong>@Fmt.Money(f.Opening, f.CurrencyCode)</strong></span>
+                        <span>@T("treasury.vencido_por_cobrar") <strong>@Fmt.Money(f.OverdueIn, f.CurrencyCode)</strong></span>
+                        <span>@T("treasury.vencido_por_pagar") <strong class="bad-text">@Fmt.Money(f.OverdueOut, f.CurrencyCode)</strong></span>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead><tr><th>@T("treasury.semana")</th><th class="num">@T("treasury.entra")</th><th class="num">@T("treasury.sale")</th><th class="num">@T("treasury.saldo")</th></tr></thead>
+                            <tbody>
+                                @foreach (var w in f.Weeks)
+                                {
+                                    <tr @key="w.Start">
+                                        <td>@Fmt.Date(w.Start)</td>
+                                        <td class="num">@Fmt.Money(w.In, f.CurrencyCode)</td>
+                                        <td class="num">@Fmt.Money(w.Out, f.CurrencyCode)</td>
+                                        <td class="num @(w.Balance < 0 ? "bad-text" : "")"><strong>@Fmt.Money(w.Balance, f.CurrencyCode)</strong></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@if (_account is { } acc)
+{
+    <Modal Title="@(acc.IsNew ? T("treasury.nueva_cuenta") : acc.Name)" Subtitle="@(T("treasury.cuenta_explica"))" Error="@_error" OnClose="() => _account = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field"><label>@T("treasury.nombre")</label><input class="control" placeholder="@(T("treasury.nombre_ej"))" @bind="acc.Name" /></div>
+                <div class="field">
+                    <label>@T("treasury.tipo_cuenta")</label>
+                    <select class="select" @bind="acc.Kind">
+                        <option value="@TreasuryAccountKinds.Bank">@T("treasury.banco")</option>
+                        <option value="@TreasuryAccountKinds.Cash">@T("treasury.caja")</option>
+                    </select>
+                </div>
+            </div>
+            @if (acc.Kind == TreasuryAccountKinds.Bank)
+            {
+                <div class="form-row">
+                    <div class="field"><label>@T("treasury.banco")</label><input class="control" @bind="acc.Bank" /></div>
+                    <div class="field"><label>@T("treasury.numero")</label><input class="control" @bind="acc.Number" /></div>
+                </div>
+            }
+            <div class="form-row three">
+                <div class="field">
+                    <label>@T("treasury.moneda")</label>
+                    <select class="select" @bind="acc.Currency" disabled="@(!acc.IsNew)">
+                        @foreach (var cur in VortexApi.Suite.Money.Currencies.List)
+                        {
+                            <option value="@cur.Code">@cur.Code · @cur.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field"><label>@T("treasury.saldo_inicial")</label><input class="control" type="number" step="0.01" @bind="acc.Opening" /></div>
+                <div class="field"><label>@T("treasury.desde")</label><input class="control" type="date" @bind="acc.OpeningOn" /></div>
+            </div>
+            <div class="field">
+                <label>@T("treasury.medios_por_defecto")</label>
+                <div style="display:flex;gap:14px;flex-wrap:wrap">
+                    @foreach (var method in PaymentMethods.All)
+                    {
+                        <label class="check-row" @key="method">
+                            <input type="checkbox" checked="@acc.Methods.Contains(method)" @onchange="e => ToggleMethod(acc, method, e.Value is true)" />
+                            <span>@Fmt.PaymentMethod(method)</span>
+                        </label>
+                    }
+                </div>
+                <span class="hint">@T("treasury.medios_explica")</span>
+            </div>
+            @if (!acc.IsNew)
+            {
+                <label class="check-row"><input type="checkbox" @bind="acc.IsActive" /><span>@T("treasury.activa")</span></label>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _account = null">@T("treasury.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAccountAsync">@T("treasury.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_transfer is { } tr)
+{
+    <Modal Title="@(T("treasury.transferir"))" Subtitle="@(T("treasury.transferir_explica"))" Size="sm" Error="@_error" OnClose="() => _transfer = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("treasury.desde_la_cuenta")</label>
+                <select class="select" @bind="tr.From">
+                    @foreach (var a in _accounts.Where(a => a.Account.IsActive))
+                    {
+                        <option value="@a.Account.Id">@a.Account.Name (@a.Account.CurrencyCode)</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>@T("treasury.a_la_cuenta")</label>
+                <select class="select" @bind="tr.To">
+                    @foreach (var a in _accounts.Where(a => a.Account.IsActive))
+                    {
+                        <option value="@a.Account.Id">@a.Account.Name (@a.Account.CurrencyCode)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("treasury.monto")</label><input class="control" type="number" step="0.01" min="0" @bind="tr.Amount" /></div>
+                <div class="field"><label>@T("treasury.fecha")</label><input class="control" type="date" @bind="tr.On" /></div>
+            </div>
+            @if (Currency(tr.From) != Currency(tr.To))
+            {
+                <div class="field">
+                    <label>@T("treasury.entra_en", Currency(tr.To))</label>
+                    <input class="control" type="number" step="0.01" min="0" @bind="tr.Received" />
+                </div>
+            }
+            <div class="field"><label>@T("treasury.referencia")</label><input class="control" @bind="tr.Reference" /></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _transfer = null">@T("treasury.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="TransferAsync">@T("treasury.transferir")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_movement is { } mv)
+{
+    <Modal Title="@(T("treasury.registrar_movimiento"))" Subtitle="@Selected?.Account.Name" Size="sm" Error="@_error" OnClose="() => _movement = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("treasury.tipo_movimiento")</label>
+                <select class="select" @bind="mv.Kind">
+                    @foreach (var k in TreasuryMovementKinds.Manual)
+                    {
+                        <option value="@k">@T("treasury.tipo." + k)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("treasury.monto_con_signo")</label><input class="control" type="number" step="0.01" @bind="mv.Amount" /></div>
+                <div class="field"><label>@T("treasury.fecha")</label><input class="control" type="date" @bind="mv.On" /></div>
+            </div>
+            <div class="field"><label>@T("treasury.descripcion")</label><input class="control" @bind="mv.Description" /></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _movement = null">@T("treasury.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="AddMovementAsync">@T("treasury.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_line is { } line)
+{
+    <Modal Title="@line.Description" Subtitle="@($"{Fmt.Date(line.On)} · {Fmt.Money(line.Amount, Selected?.Account.CurrencyCode ?? "PEN")}")" Error="@_error" OnClose="() => _line = null">
+        <ChildContent>
+            <span class="field-label">@T("treasury.posibles_parejas")</span>
+            @if (_suggestions.Count == 0)
+            {
+                <p class="muted" style="margin:0">@T("treasury.sin_parejas")</p>
+            }
+            @foreach (var s in _suggestions)
+            {
+                <div class="list-row" @key="s.Ref">
+                    <span class="two-line" style="flex:1;min-width:0">
+                        <span class="t1">@s.Description</span>
+                        <span class="t2">@Fmt.Date(s.On) · @T("treasury.tipo." + s.Kind)</span>
+                    </span>
+                    <strong>@Fmt.Money(s.Amount, s.CurrencyCode)</strong>
+                    <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => MatchAsync(line, s)">@T("treasury.conciliar")</button>
+                </div>
+            }
+            <div class="field" style="margin-top:12px">
+                <label>@T("treasury.o_registrar_como")</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    @foreach (var k in TreasuryMovementKinds.Manual)
+                    {
+                        <button class="btn btn-sm" disabled="@_busy" @onclick="() => CreateFromLineAsync(line, k)">@T("treasury.tipo." + k)</button>
+                    }
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _line = null">@T("treasury.cerrar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<TreasuryAccountRow> _accounts = [];
+    private IReadOnlyList<TreasuryMovementRow> _movements = [], _suggestions = [];
+    private IReadOnlyList<StatementLineRow> _lines = [];
+    private CashFlowProjection? _flow;
+    private string? _flowCurrency, _error;
+    private Guid? _selected;
+    private int _tab;
+    private bool _busy, _unmatchedOnly = true;
+    private AccountForm? _account;
+    private TransferForm? _transfer;
+    private ManualMovement? _movement;
+    private StatementLineRow? _line;
+
+    private bool _canManage => Session.Can(ErpPermissions.ManageTreasury);
+    private TreasuryAccountRow? Selected => _accounts.FirstOrDefault(a => a.Account.Id == _selected);
+    private static DateOnly Today => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(ErpClock.Offset).DateTime);
+    private string Currency(Guid id) => _accounts.FirstOrDefault(a => a.Account.Id == id)?.Account.CurrencyCode ?? "";
+
+    private sealed class AccountForm
+    {
+        public Guid Id { get; set; }
+        public bool IsNew => Id == Guid.Empty;
+        public string Name { get; set; } = "";
+        public string Kind { get; set; } = TreasuryAccountKinds.Bank;
+        public string? Bank { get; set; }
+        public string? Number { get; set; }
+        public string Currency { get; set; } = "PEN";
+        public decimal Opening { get; set; }
+        public DateOnly OpeningOn { get; set; } = Today;
+        public HashSet<string> Methods { get; set; } = [];
+        public bool IsActive { get; set; } = true;
+    }
+
+    private sealed class TransferForm
+    {
+        public Guid From { get; set; }
+        public Guid To { get; set; }
+        public decimal Amount { get; set; }
+        public decimal? Received { get; set; }
+        public DateOnly On { get; set; } = Today;
+        public string? Reference { get; set; }
+    }
+
+    private sealed class ManualMovement
+    {
+        public string Kind { get; set; } = TreasuryMovementKinds.Fee;
+        public decimal Amount { get; set; }
+        public DateOnly On { get; set; }
+        public string Description { get; set; } = "";
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _accounts = await Erp.Treasury.GetAccountsAsync();
+        _selected ??= _accounts.FirstOrDefault(a => a.Account.IsActive)?.Account.Id;
+        if (_selected is { } id)
+        {
+            _movements = await Erp.Treasury.GetMovementsAsync(id);
+            _lines = await Erp.Treasury.GetStatementLinesAsync(id, _unmatchedOnly);
+        }
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        _selected = id;
+        await ReloadAsync();
+    }
+
+    private async Task LoadLinesAsync()
+    {
+        if (_selected is { } id)
+            _lines = await Erp.Treasury.GetStatementLinesAsync(id, _unmatchedOnly);
+    }
+
+    private async Task LoadFlowAsync()
+    {
+        _tab = 2;
+        _flowCurrency ??= Selected?.Account.CurrencyCode ?? _accounts.FirstOrDefault()?.Account.CurrencyCode;
+        if (_flowCurrency is { } cur)
+            _flow = await Erp.Treasury.GetCashFlowAsync(cur);
+    }
+
+    private async Task ChangeCurrencyAsync(ChangeEventArgs e)
+    {
+        _flowCurrency = e.Value?.ToString();
+        await LoadFlowAsync();
+    }
+
+    private void OpenAccount(TreasuryAccount? a)
+    {
+        _error = null;
+        _account = a is null ? new AccountForm() : new AccountForm
+        {
+            Id = a.Id, Name = a.Name, Kind = a.Kind, Bank = a.Bank, Number = a.Number, Currency = a.CurrencyCode, Opening = a.OpeningBalance,
+            OpeningOn = a.OpeningOn, Methods = a.Methods.ToHashSet(), IsActive = a.IsActive,
+        };
+    }
+
+    private static void ToggleMethod(AccountForm form, string method, bool on)
+    {
+        if (on)
+            form.Methods.Add(method);
+        else
+            form.Methods.Remove(method);
+    }
+
+    private async Task SaveAccountAsync()
+    {
+        var a = _account!;
+        _busy = true;
+        Guid id = default;
+        _error = await TryAsync(async () => id = await Erp.Treasury.SaveAccountAsync(new TreasuryAccount(a.Id, a.Name, a.Kind, a.Bank, a.Number,
+            a.Currency, a.Opening, a.OpeningOn, a.Methods.ToList(), a.IsActive)), T("treasury.cuenta_guardada"));
+        _busy = false;
+        if (_error is null)
+        {
+            _account = null;
+            _selected = id;
+            await ReloadAsync();
+        }
+    }
+
+    private void OpenTransfer()
+    {
+        var active = _accounts.Where(a => a.Account.IsActive).ToList();
+        _error = null;
+        _transfer = new TransferForm { From = _selected ?? active[0].Account.Id, To = active.First(a => a.Account.Id != (_selected ?? active[0].Account.Id)).Account.Id };
+    }
+
+    private async Task TransferAsync()
+    {
+        var t = _transfer!;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Treasury.TransferAsync(t.From, t.To, t.Amount, t.On, Currency(t.From) == Currency(t.To) ? null : t.Received,
+            t.Reference), T("treasury.transferencia_registrada"));
+        _busy = false;
+        if (_error is null)
+        {
+            _transfer = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task AddMovementAsync()
+    {
+        var m = _movement!;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Treasury.AddMovementAsync(_selected!.Value, m.On, m.Amount, m.Kind, m.Description), T("treasury.movimiento_registrado"));
+        _busy = false;
+        if (_error is null)
+        {
+            _movement = null;
+            await ReloadAsync();
+        }
+    }
+
+    /// <summary>Elige el archivo del banco (CSV, OFX o CAMT.053 en XML), lo importa y concilia solo.</summary>
+    private async Task ImportAsync()
+    {
+        var file = await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(new Microsoft.Maui.Storage.PickOptions { PickerTitle = T("treasury.importar_extracto") });
+        if (file is null)
+            return;
+        _busy = true;
+        string content;
+        await using (var stream = await file.OpenReadAsync())
+        using (var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true))
+            content = await reader.ReadToEndAsync();
+        await RunAsync(async () =>
+        {
+            var r = await Erp.Treasury.ImportStatementAsync(_selected!.Value, content);
+            Toasts.Success(T("treasury.importado", r.Imported, r.Duplicates, r.Matched, r.Unmatched));
+        });
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task AutoMatchAsync()
+    {
+        _busy = true;
+        await RunAsync(async () => Toasts.Success(T("treasury.conciliadas", await Erp.Treasury.AutoMatchAsync(_selected!.Value))));
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task OpenLineAsync(StatementLineRow l)
+    {
+        _error = null;
+        _line = l;
+        _suggestions = await Erp.Treasury.SuggestAsync(l.Id);
+    }
+
+    private async Task MatchAsync(StatementLineRow l, TreasuryMovementRow m)
+    {
+        _busy = true;
+        _error = await TryAsync(() => Erp.Treasury.MatchAsync(l.Id, m.Ref), T("treasury.linea_conciliada"));
+        _busy = false;
+        if (_error is null)
+        {
+            _line = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task CreateFromLineAsync(StatementLineRow l, string kind)
+    {
+        _busy = true;
+        _error = await TryAsync(() => Erp.Treasury.CreateFromLineAsync(l.Id, kind), T("treasury.linea_conciliada"));
+        _busy = false;
+        if (_error is null)
+        {
+            _line = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task UnmatchAsync(StatementLineRow l)
+    {
+        await RunAsync(() => Erp.Treasury.UnmatchAsync(l.Id));
+        await ReloadAsync();
+    }
+}

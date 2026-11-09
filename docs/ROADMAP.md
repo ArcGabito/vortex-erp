@@ -59,11 +59,11 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| ERP-35 | Cuentas bancarias y cajas de la empresa | Pendiente | 4 |
-| ERP-36 | Transferencias entre cuentas | Pendiente | 4 |
-| ERP-37 | Conciliación bancaria con extractos (CSV, OFX, CAMT.053) | Pendiente | 4 |
-| ERP-38 | Flujo de caja proyectado | Pendiente | 4 |
-| ERP-39 | Depósitos de las cajas del POS | Pendiente | 4 |
+| ERP-35 | Cuentas bancarias y cajas de la empresa | Hecho | 4b |
+| ERP-36 | Transferencias entre cuentas | Hecho | 4b |
+| ERP-37 | Conciliación bancaria con extractos (CSV, OFX, CAMT.053) | Hecho | 4b |
+| ERP-38 | Flujo de caja proyectado | Hecho | 4b |
+| ERP-39 | Depósitos de las cajas del POS | Hecho (falta que el POS publique `cash.deposited`) | 4b |
 
 ### Contabilidad
 
@@ -234,6 +234,20 @@ vencimiento sale del plazo del proveedor si no se escribe), **pagos** parciales 
 `erp.record.upserted` (gana el más nuevo); los pagos son registros aparte, así dos equipos que pagan sin conexión suman
 los dos. Nuevos permisos: pedir compras, aprobar compras y pagar a proveedores (rol contador). Pruebas en
 `PayablesTests`. Falta recibir las sugerencias de compra del WMS (`purchase.requested`, fase 6 del WMS).
+
+**Estado 4b (2026-11):** hecha. **Cuentas** bancarias y cajas (pantalla Tesorería) con moneda, saldo inicial y los
+medios de pago que entran a cada una: cada cobro y cada pago a proveedor cae en la cuenta de su medio y moneda (o en la
+que se elija), así el saldo de cada cuenta sale solo. **Transferencias** entre cuentas, también entre monedas (se indica
+cuánto entra). **Movimientos a mano**: comisiones, intereses y ajustes. **Extractos** CSV (cualquier banco: con cabecera
+en es/en/pt, importe o cargo/abono, coma o punto decimal), OFX y CAMT.053: importarlo dos veces no duplica líneas
+(Id determinista) y cada línea se **concilia sola** con el movimiento del mismo importe a ±3 días (si hay varios, el de
+la misma referencia o la fecha más cercana); lo que no encuentra pareja queda a la vista para conciliarlo a mano, con
+sugerencias, o registrarlo como comisión/interés/ajuste. **Flujo de caja proyectado** por moneda y semana: saldo de
+hoy + comprobantes por cobrar por vencimiento − facturas de proveedor por fecha programada o vencimiento (lo vencido,
+aparte y en la primera semana). **Depósitos del POS**: `cash.deposited` (vortex-api#40) pasa el efectivo de la caja al
+banco con Ids deterministas, listo para conciliarse. Hub: las cuentas viven en el ERP (no hizo falta llevarlas a
+`company`; se hará cuando otro sistema necesite mostrarlas). Permiso nuevo: tesorería (rol contador). Pruebas en
+`TreasuryTests`. Fase 4 terminada; falta que el POS publique `cash.deposited` (fase 4 del POS).
 
 ## Fase 5: contabilidad · XL
 

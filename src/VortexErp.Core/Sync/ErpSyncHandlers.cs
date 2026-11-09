@@ -39,6 +39,7 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.QuoteAccepted, HandleQuoteAcceptedAsync)
         .OnEvent(SuiteEvents.DealWon, HandleDealWonAsync)
         .OnEvent(SuiteEvents.ShipmentDispatched, HandleShipmentDispatchedAsync)
+        .OnEvent(SuiteEvents.CashDeposited, HandleCashDepositedAsync)
         .OnEvent(SuiteEvents.SaleCompleted, HandleSaleCompletedAsync)
         .OnEvent(SuiteEvents.SaleVoided, HandleSaleVoidedAsync)
         .OnEvent(SuiteEvents.SaleReturned, HandleSaleReturnedAsync)
@@ -191,13 +192,18 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
             return null;
         }, ct);
 
-    /// <summary>Solicitudes, facturas y pagos a proveedores y ajustes de compras de otro equipo del ERP (gana el más nuevo).</summary>
+    /// <summary>Efectivo de una caja del POS depositado en el banco: entra a la cuenta bancaria para conciliarlo (ERP-39).</summary>
+    public Task HandleCashDepositedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<CashDeposited>(e, (d, c, tx) => TreasuryService.ApplyPosDepositAsync(c, tx, e.OccurredAt, d), ct);
+
+    /// <summary>Solicitudes, facturas y pagos a proveedores, ajustes de compras y tesorería de otro equipo del ERP (gana el más nuevo).</summary>
     public Task HandleRecordUpsertedAsync(VortexEvent e, CancellationToken ct = default) =>
         ApplyOnceAsync<ErpRecord>(e, async (r, c, tx) =>
         {
             if (e.Source != ProductCode)
                 return "ignorado: solo lo publica el ERP";
-            return await PayablesService.ApplyAsync(c, tx, r) ? null : $"sin cambios ({r.Kind}: ya tenía uno más nuevo o es desconocido)";
+            var applied = TreasuryService.Handles(r.Kind) ? await TreasuryService.ApplyAsync(c, tx, r) : await PayablesService.ApplyAsync(c, tx, r);
+            return applied ? null : $"sin cambios ({r.Kind}: ya tenía uno más nuevo o es desconocido)";
         }, ct);
 
     // ---------- WMS ----------

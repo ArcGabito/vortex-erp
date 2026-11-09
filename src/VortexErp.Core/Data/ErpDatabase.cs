@@ -275,5 +275,24 @@ internal static class Schema
         ALTER TABLE purchase_orders ADD COLUMN request_id TEXT;
         ALTER TABLE purchase_orders ADD COLUMN cancel_reason TEXT;
         """,
+        // 9: tesorería (fase 4b). Cuentas bancarias y cajas; movimientos propios (transferencias, comisiones, depósitos de
+        // caja del POS, ajustes); líneas de los extractos importados con el movimiento con que se concilió. Cobros y pagos
+        // guardan la cuenta (sin ella, la predeterminada del medio de pago y la moneda).
+        """
+        CREATE TABLE treasury_accounts (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, bank TEXT, number TEXT, currency_code TEXT NOT NULL,
+            opening_balance REAL NOT NULL, opening_on TEXT NOT NULL, methods TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL,
+            updated_at TEXT NOT NULL);
+        CREATE TABLE treasury_movements (
+            id TEXT PRIMARY KEY, account_id TEXT NOT NULL, on_date TEXT NOT NULL, amount REAL NOT NULL, kind TEXT NOT NULL,
+            description TEXT NOT NULL, reference TEXT, transfer_id TEXT, created_at TEXT NOT NULL, user_name TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_treasury_movements_account ON treasury_movements (account_id, on_date);
+        CREATE TABLE statement_lines (
+            id TEXT PRIMARY KEY, account_id TEXT NOT NULL, on_date TEXT NOT NULL, amount REAL NOT NULL, description TEXT NOT NULL,
+            reference TEXT, imported_at TEXT NOT NULL, matched_ref TEXT, matched_at TEXT, matched_by TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_statement_lines_account ON statement_lines (account_id, on_date);
+        ALTER TABLE payments ADD COLUMN account_id TEXT;
+        ALTER TABLE supplier_payments ADD COLUMN account_id TEXT;
+        """,
     ];
 }
