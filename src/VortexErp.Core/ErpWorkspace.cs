@@ -16,6 +16,7 @@ public sealed class ErpWorkspace
         Database = db;
         Master = new MasterDataService(db, context, clock);
         PriceLists = new PriceListService(db, context, clock);
+        Payables = new PayablesService(db, context, clock);
         Orders = new OrderService(db, context, clock);
         Invoices = new InvoiceService(db, context, clock);
         Purchases = new PurchaseService(db, context, clock);
@@ -28,6 +29,7 @@ public sealed class ErpWorkspace
     public ErpDatabase Database { get; }
     public MasterDataService Master { get; }
     public PriceListService PriceLists { get; }
+    public PayablesService Payables { get; }
     public OrderService Orders { get; }
     public InvoiceService Invoices { get; }
     public PurchaseService Purchases { get; }

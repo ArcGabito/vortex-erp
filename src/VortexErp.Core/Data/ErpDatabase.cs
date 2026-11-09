@@ -244,5 +244,36 @@ internal static class Schema
         ALTER TABLE parties ADD COLUMN price_list_id TEXT;
         DELETE FROM sync_cursors WHERE stream = 'master';
         """,
+        // 8: compras y cuentas por pagar (fase 4a). Solicitudes de compra con su aprobación, facturas de proveedor con la
+        // conciliación de tres vías, pagos a proveedores y ajustes de compras (umbral de aprobación y tolerancia). Son
+        // registros del ERP (erp.record.upserted, gana el más nuevo por updated_at). La orden guarda su solicitud y el
+        // motivo si se canceló.
+        """
+        CREATE TABLE purchase_requests (
+            id TEXT PRIMARY KEY, number TEXT NOT NULL, site_id TEXT, supplier_id TEXT, status TEXT NOT NULL, currency_code TEXT NOT NULL,
+            total REAL NOT NULL, notes TEXT, requested_by TEXT, requested_at TEXT NOT NULL, decided_by TEXT, decided_at TEXT,
+            reason TEXT, po_id TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_purchase_requests_status ON purchase_requests (status, requested_at);
+        CREATE TABLE purchase_request_lines (
+            request_id TEXT NOT NULL, line_no INTEGER NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL, unit_cost REAL,
+            PRIMARY KEY (request_id, line_no));
+        CREATE TABLE supplier_invoices (
+            id TEXT PRIMARY KEY, supplier_id TEXT NOT NULL, po_id TEXT, document_number TEXT NOT NULL, issued_on TEXT NOT NULL,
+            due_on TEXT NOT NULL, currency_code TEXT NOT NULL, subtotal REAL NOT NULL, tax REAL NOT NULL, total REAL NOT NULL,
+            status TEXT NOT NULL, match_note TEXT, released_by TEXT, released_at TEXT, release_reason TEXT, planned_on TEXT,
+            created_at TEXT NOT NULL, user_name TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_supplier_invoices_supplier ON supplier_invoices (supplier_id, due_on);
+        CREATE INDEX ix_supplier_invoices_po ON supplier_invoices (po_id);
+        CREATE TABLE supplier_invoice_lines (
+            invoice_id TEXT NOT NULL, line_no INTEGER NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL, unit_cost REAL NOT NULL,
+            PRIMARY KEY (invoice_id, line_no));
+        CREATE TABLE supplier_payments (
+            id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_on TEXT NOT NULL, method TEXT NOT NULL,
+            reference TEXT, created_at TEXT NOT NULL, user_name TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_supplier_payments_invoice ON supplier_payments (invoice_id);
+        CREATE TABLE erp_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+        ALTER TABLE purchase_orders ADD COLUMN request_id TEXT;
+        ALTER TABLE purchase_orders ADD COLUMN cancel_reason TEXT;
+        """,
     ];
 }

@@ -14,48 +14,80 @@ namespace VortexErp.Core.Services;
 /// </summary>
 public sealed class PurchaseService(ErpDatabase db, IErpContext context, TimeProvider clock) : ErpService(db, context, clock)
 {
+    /// <summary>
+    /// Orden de compra directa. Si supera el umbral de aprobación de compras, solo la crea quien puede aprobar; los demás
+    /// la piden con una solicitud.
+    /// </summary>
     public Task<string> CreateAsync(Guid supplierId, Guid? siteId, IReadOnlyList<DocumentLine> lines, string currencyCode,
         DateOnly? expectedAt = null, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.CreatePurchase);
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var total = lines.Sum(l => Tax.Round(l.Quantity * (l.UnitPrice ?? 0)));
+            if (!Context.Can(ErpPermissions.ApprovePurchase))
+                Require(!await PayablesService.NeedsApprovalAsync(c, tx, total, currencyCode, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime)),
+                    T("error.compra_supera_el_umbral"));
+            return (await CreateInternalAsync(c, tx, now, Context, supplierId, siteId, lines, currencyCode, expectedAt, null)).Number;
+        }, ct);
+    }
+
+    /// <summary>Crea la orden y publica <c>purchase_order.created</c> (también desde una solicitud aprobada).</summary>
+    internal static async Task<(Guid Id, string Number)> CreateInternalAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now,
+        IErpContext context, Guid supplierId, Guid? siteId, IReadOnlyList<DocumentLine> lines, string currencyCode, DateOnly? expectedAt,
+        Guid? requestId)
+    {
         Require(supplierId != Guid.Empty, T("error.elige_el_proveedor"));
         Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
         Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
         Require(lines.All(l => l.UnitPrice is >= 0), T("error.indica_el_costo_unitario_de"));
+        Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM parties WHERE id = $id AND is_supplier = 1 AND is_deleted = 0", tx,
+            ("$id", supplierId)) > 0, T("error.el_proveedor_no_existe"));
+        var fallback = await c.ScalarAsync<string?>($"""
+            SELECT id FROM sites WHERE is_deleted = 0 AND is_active = 1
+            {(context.DefaultSiteId is { } d ? $"ORDER BY CASE WHEN id = '{d}' THEN 0 ELSE 1 END," : "ORDER BY")} code LIMIT 1
+            """, tx);
+        var site = siteId ?? (fallback is null ? null : Guid.Parse(fallback));
+        Require(site is not null, T("error.elige_el_almacen_que_recibe"));
+        Require(context.SiteIds.Count == 0 || context.SiteIds.Contains(site!.Value), T("error.sede_no_asignada"));
 
-        return InTransactionAsync(async (c, tx, now) =>
-        {
-            Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM parties WHERE id = $id AND is_supplier = 1 AND is_deleted = 0", tx,
-                ("$id", supplierId)) > 0, T("error.el_proveedor_no_existe"));
-            var site = siteId ?? await DefaultSiteAsync(c, tx);
-            Require(site is not null, T("error.elige_el_almacen_que_recibe"));
-            Require(CanUseSite(site!.Value), T("error.sede_no_asignada"));
-
-            var id = Guid.NewGuid();
-            var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Purchase, Context.DeviceTag);
-            var poLines = lines.GroupBy(l => l.ItemId)
-                .Select(g => new PurchaseOrderLine(g.Key, g.Sum(l => l.Quantity), g.First().UnitPrice!.Value)).ToList();
-            var e = new PurchaseOrderCreated(id, number, supplierId, site!.Value, poLines, currencyCode,
-                poLines.Sum(l => Tax.Round(l.Quantity * l.UnitCost)), expectedAt);
-            await InsertAsync(c, tx, now, e, Context.UserName);
-            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PurchaseOrderCreated, e, subjectType: "purchase_order", subjectId: number, id: id);
-            return number;
-        }, ct);
+        var id = Guid.NewGuid();
+        var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Purchase, context.DeviceTag);
+        var poLines = lines.GroupBy(l => l.ItemId)
+            .Select(g => new PurchaseOrderLine(g.Key, g.Sum(l => l.Quantity), g.First().UnitPrice!.Value)).ToList();
+        var e = new PurchaseOrderCreated(id, number, supplierId, site!.Value, poLines, currencyCode,
+            poLines.Sum(l => Tax.Round(l.Quantity * l.UnitCost)), expectedAt);
+        await InsertAsync(c, tx, now, e, context.UserName);
+        if (requestId is { } r)
+            await c.ExecAsync("UPDATE purchase_orders SET request_id = $r WHERE id = $id", tx, ("$id", id), ("$r", r));
+        await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PurchaseOrderCreated, e, subjectType: "purchase_order", subjectId: number, id: id);
+        return (id, number);
     }
 
-    /// <summary>Cancela una orden sin recepciones (no se publica: el catálogo v1 no tiene <c>purchase_order.cancelled</c>).</summary>
-    public Task CancelAsync(Guid id, CancellationToken ct = default)
+    /// <summary>
+    /// Cancela una orden abierta o recibida en parte: lo recibido queda y el resto ya no se espera. Se publica
+    /// <c>purchase_order.cancelled</c> para el WMS y los demás equipos del ERP.
+    /// </summary>
+    public Task CancelAsync(Guid id, string? reason = null, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.CancelPurchase);
         return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM purchase_orders WHERE id = $id", tx, ("$id", id));
-            Require(status == PurchaseStatuses.Open, T("error.solo_se_cancela_una_orden"));
+            Require(status is PurchaseStatuses.Open or PurchaseStatuses.Partial, T("error.solo_se_cancela_una_orden"));
             var number = await c.ScalarAsync<string>("SELECT number FROM purchase_orders WHERE id = $id", tx, ("$id", id));
-            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "purchase_order", id, number, null);
-            return await c.ExecAsync("UPDATE purchase_orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", id));
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "purchase_order", id, number, Clean(reason));
+            await ApplyCancelledAsync(c, tx, new PurchaseOrderCancelled(id, number, Clean(reason)));
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PurchaseOrderCancelled, new PurchaseOrderCancelled(id, number, Clean(reason)),
+                subjectType: "purchase_order", subjectId: number, id: DeterministicId.From("purchase_order_cancel", id));
+            return 0;
         }, ct);
     }
+
+    /// <summary><c>purchase_order.cancelled</c> (de este u otro equipo del ERP).</summary>
+    internal static Task ApplyCancelledAsync(SqliteConnection c, SqliteTransaction tx, PurchaseOrderCancelled e) =>
+        c.ExecAsync("UPDATE purchase_orders SET status = 'cancelled', cancel_reason = $reason WHERE id = $id AND status <> 'cancelled'", tx,
+            ("$id", e.PurchaseOrderId), ("$reason", e.Reason));
 
     public async Task<PagedResult<PurchaseRow>> GetPurchasesAsync(string? search, string? status, int page, int pageSize, CancellationToken ct = default)
     {

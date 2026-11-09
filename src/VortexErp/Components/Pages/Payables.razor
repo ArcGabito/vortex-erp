@@ -1,0 +1,386 @@
+@page "/por-pagar"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("payables.por_pagar")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("payables.cuentas_por_pagar")</h2>
+            <p>@T("payables.explica")</p>
+        </div>
+        @if (Session.Can(ErpPermissions.PaySuppliers))
+        {
+            <button class="btn btn-dark" @onclick="() => OpenNewAsync(null)"><Icon Name="plus" Size="18" />@T("payables.registrar_factura")</button>
+        }
+    </div>
+
+    @if (_summary.Count > 0)
+    {
+        <div class="card">
+            <div class="card-head"><h3>@T("payables.por_proveedor")</h3></div>
+            <div class="card-body">
+                @foreach (var s in _summary)
+                {
+                    <div class="list-row payable-row" @key="(s.SupplierId, s.CurrencyCode)">
+                        <span class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@s.SupplierName</span>
+                            <span class="t2">
+                                @(s.Invoices == 1 ? T("payables.una_factura") : T("payables.n_facturas", s.Invoices))@(s.Held > 0 ? $" · {(s.Held == 1 ? T("payables.una_retenida") : T("payables.n_retenidas", s.Held))}" : "")
+                            </span>
+                            <span class="aging">
+                                @foreach (var (label, amount, tone) in Tramos(s))
+                                {
+                                    <span class="@tone">@label @Fmt.Money(amount, s.CurrencyCode)</span>
+                                }
+                            </span>
+                        </span>
+                        <strong>@Fmt.Money(s.Total, s.CurrencyCode)</strong>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="filters">
+        <div class="segmented">
+            @foreach (var (value, label) in Tabs)
+            {
+                <button class="@(_filter == value ? "on" : "")" @onclick="async () => { _filter = value; await ReloadAsync(); }">@label</button>
+            }
+        </div>
+    </div>
+
+    @if (_invoices.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="receipt" Title="@(T("payables.sin_facturas"))" Text="@(T("payables.sin_facturas_explica"))" />
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                @foreach (var i in _invoices)
+                {
+                    var (text, tone) = Estado(i);
+                    <button class="invoice-row" @key="i.Id" @onclick="() => OpenAsync(i)">
+                        <span class="inv-top">
+                            <span class="inv-number">@i.DocumentNumber</span>
+                            <strong class="inv-amount">@Fmt.Money(i.Balance, i.CurrencyCode)</strong>
+                        </span>
+                        <span class="inv-supplier">@i.SupplierName</span>
+                        <span class="inv-meta @(Overdue(i) ? "bad-text" : "")">
+                            @T("payables.vence_el", Fmt.Date(i.DueOn))@(i.PurchaseOrderNumber is { } po ? $" · {po}" : "")@(i.PlannedOn is { } p ? $" · {T("payables.se_paga_el", Fmt.Date(p))}" : "")
+                        </span>
+                        <span class="inv-foot">
+                            <StatusPill Text="@text" Tone="@tone" />
+                            <span class="inv-meta">@T("payables.emitida_el", Fmt.Date(i.IssuedOn))</span>
+                        </span>
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (_new is { } n)
+{
+    <Modal Title="@(T("payables.registrar_factura"))" Subtitle="@(T("payables.registrar_explica"))" Size="lg" Error="@_error" OnClose="() => _new = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("payables.proveedor")</label>
+                    <select class="select" value="@n.SupplierId" @onchange="e => ChangeSupplierAsync(n, e.Value?.ToString())">
+                        <option value="">@T("payables.elige_el_proveedor")</option>
+                        @foreach (var s in _suppliers)
+                        {
+                            <option value="@s.Id">@s.Label</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>@T("payables.orden_de_compra")</label>
+                    <select class="select" value="@n.OrderId" @onchange="e => ChangeOrderAsync(n, e.Value?.ToString())">
+                        <option value="">@T("payables.sin_orden")</option>
+                        @foreach (var o in _orders.Where(o => o.SupplierId == n.SupplierId))
+                        {
+                            <option value="@o.Id">@o.Number · @Fmt.Money(o.Total, o.CurrencyCode)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="form-row three">
+                <div class="field"><label>@T("payables.numero")</label><input class="control" placeholder="F001-000123" @bind="n.Number" /></div>
+                <div class="field"><label>@T("payables.emitida")</label><input class="control" type="date" @bind="n.IssuedOn" /></div>
+                <div class="field"><label>@T("payables.vence_opcional")</label><input class="control" type="date" @bind="n.DueOn" /></div>
+            </div>
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("payables.costo_sin_impuesto"))" Changed="StateHasChanged" />
+            <span class="hint">@T("payables.tres_vias_explica")</span>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _new = null">@T("payables.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0 || n.SupplierId is null)" @onclick="RegisterAsync">@T("payables.registrar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_detail is { } d)
+{
+    var (text, tone) = Estado(d);
+    <Modal Title="@d.DocumentNumber" Subtitle="@($"{d.SupplierName} · {Fmt.Date(d.IssuedOn)}")" Error="@_error" OnClose="() => _detail = null">
+        <ChildContent>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <StatusPill Text="@text" Tone="@tone" />
+                @if (d.PurchaseOrderNumber is { } po)
+                {
+                    <span class="muted">@T("payables.de_la_orden", po)</span>
+                }
+            </div>
+            @if (d.MatchNote is { } note)
+            {
+                <div class="alert @(d.IsHeld ? "warn" : "info")">
+                    <Icon Name="alert" Size="18" />
+                    <div>
+                        <strong>@(d.IsHeld ? T("payables.retenida_porque") : T("payables.liberada_por", d.ReleasedBy ?? "—", d.ReleaseReason ?? ""))</strong>
+                        @foreach (var line in note.Split('\n'))
+                        {
+                            <div>@line</div>
+                        }
+                    </div>
+                </div>
+            }
+            <dl class="totals">
+                <dt>@T("payables.subtotal")</dt><dd>@Fmt.Money(d.Subtotal, d.CurrencyCode)</dd>
+                <dt>@T("payables.impuesto")</dt><dd>@Fmt.Money(d.Tax, d.CurrencyCode)</dd>
+                <dt>@T("payables.total")</dt><dd>@Fmt.Money(d.Total, d.CurrencyCode)</dd>
+                <dt>@T("payables.pagado")</dt><dd>@Fmt.Money(d.Paid, d.CurrencyCode)</dd>
+                <dt class="grand">@T("payables.saldo")</dt><dd class="grand">@Fmt.Money(d.Balance, d.CurrencyCode)</dd>
+            </dl>
+            <div class="muted">@T("payables.vence_el", Fmt.Date(d.DueOn))</div>
+            @if (_payments.Count > 0)
+            {
+                <div class="card-head" style="padding:0"><h3>@T("payables.pagos")</h3></div>
+                @foreach (var p in _payments)
+                {
+                    <div class="list-row" @key="p.Id">
+                        <span class="two-line" style="flex:1"><span class="t1">@Fmt.Date(p.PaidOn) · @Fmt.PaymentMethod(p.Method)</span><span class="t2">@string.Join(" · ", new[] { p.Reference, p.UserName }.Where(x => !string.IsNullOrEmpty(x)))</span></span>
+                        <strong>@Fmt.Money(p.Amount, d.CurrencyCode)</strong>
+                    </div>
+                }
+            }
+
+            @if (_action == "pay")
+            {
+                <div class="form-row three">
+                    <div class="field"><label>@T("payables.monto")</label><input class="control" type="number" inputmode="decimal" min="0" step="0.01" @bind="_amount" /></div>
+                    <div class="field"><label>@T("payables.fecha")</label><input class="control" type="date" @bind="_date" /></div>
+                    <div class="field">
+                        <label>@T("payables.medio")</label>
+                        <select class="select" @bind="_method">
+                            @foreach (var m in PaymentMethods.All)
+                            {
+                                <option value="@m">@Fmt.PaymentMethod(m)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="field"><label>@T("payables.referencia")</label><input class="control" placeholder="@(T("payables.referencia_ej"))" @bind="_reference" /></div>
+            }
+            else if (_action == "release")
+            {
+                <div class="field"><label>@T("payables.motivo_liberar")</label><input class="control" @bind="_reference" /></div>
+            }
+            else if (_action == "plan")
+            {
+                <div class="field"><label>@T("payables.pagar_el")</label><input class="control" type="date" @bind="_date" /></div>
+            }
+        </ChildContent>
+        <Footer>
+            @if (_action is not null)
+            {
+                <button class="btn" @onclick="() => _action = null">@T("payables.cancelar")</button>
+                <button class="btn btn-dark" disabled="@_busy" @onclick="ConfirmAsync">@T("payables.confirmar")</button>
+            }
+            else
+            {
+                @if (d.Status != SupplierInvoiceStatuses.Void && d.Paid == 0 && Session.Can(ErpPermissions.PaySuppliers))
+                {
+                    <button class="btn btn-ghost danger" @onclick="VoidAsync">@T("payables.anular")</button>
+                }
+                @if (d.IsHeld && Session.Can(ErpPermissions.ApprovePurchase))
+                {
+                    <button class="btn" @onclick='() => Start(d, "release")'><Icon Name="unlock" Size="16" />@T("payables.liberar")</button>
+                }
+                @if (d.Status == SupplierInvoiceStatuses.Approved && d.Balance > 0 && Session.Can(ErpPermissions.PaySuppliers))
+                {
+                    <button class="btn" @onclick='() => Start(d, "plan")'><Icon Name="clock" Size="16" />@T("payables.programar")</button>
+                    <button class="btn btn-dark" @onclick='() => Start(d, "pay")'><Icon Name="cash" Size="16" />@T("payables.pagar")</button>
+                }
+            }
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "orden")] public Guid? OrderQuery { get; set; }
+
+    private static readonly (string? Value, string Label)[] Tabs =
+        [("open", T("payables.pendientes")), ("held", T("payables.retenidas")), ("overdue", T("payables.vencidas")), (null, T("payables.todas"))];
+
+    private IReadOnlyList<SupplierInvoiceRow> _invoices = [];
+    private IReadOnlyList<PayableSummary> _summary = [];
+    private IReadOnlyList<Option> _suppliers = [];
+    private IReadOnlyList<PurchaseRow> _orders = [];
+    private IReadOnlyList<SupplierPaymentRow> _payments = [];
+    private string? _filter = "open", _error, _action, _reference;
+    private string _method = PaymentMethods.Transfer;
+    private decimal _amount;
+    private DateOnly? _date;
+    private SupplierInvoiceRow? _detail;
+    private NewInvoice? _new;
+    private bool _busy, _openedFromOrder;
+    private string _currency = "PEN";
+
+    private sealed class NewInvoice
+    {
+        public Guid? SupplierId { get; set; }
+        public Guid? OrderId { get; set; }
+        public string? Number { get; set; }
+        public DateOnly IssuedOn { get; set; }
+        public DateOnly? DueOn { get; set; }
+        public string Currency { get; set; } = "PEN";
+        public List<LineEditor.LineDraft> Lines { get; } = [];
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _invoices = await Erp.Payables.GetInvoicesAsync(_filter);
+        _summary = await Erp.Payables.GetPayablesAsync();
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        // Desde una orden de compra ("Registrar factura") se abre con la orden elegida.
+        if (OrderQuery is { } order && !_openedFromOrder && Session.Can(ErpPermissions.PaySuppliers))
+        {
+            _openedFromOrder = true;
+            await OpenNewAsync(order);
+        }
+    }
+
+    private async Task OpenNewAsync(Guid? orderId)
+    {
+        _error = null;
+        _suppliers = await Erp.Master.GetPartyOptionsAsync(suppliers: true);
+        _orders = (await Erp.Purchases.GetPurchasesAsync(null, null, 1, 200)).Items.Where(o => o.Status != PurchaseStatuses.Cancelled || o.Received > 0).ToList();
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        _new = new NewInvoice { IssuedOn = today, Currency = _currency };
+        if (orderId is { } id && _orders.FirstOrDefault(o => o.Id == id) is { } po)
+        {
+            _new.SupplierId = po.SupplierId;
+            await ChangeOrderAsync(_new, id.ToString());
+        }
+    }
+
+    private Task ChangeSupplierAsync(NewInvoice n, string? value)
+    {
+        n.SupplierId = Guid.TryParse(value, out var id) ? id : null;
+        n.OrderId = null;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Con una orden, las líneas se llenan con lo recibido y el costo de la orden (lo que normalmente se factura).</summary>
+    private async Task ChangeOrderAsync(NewInvoice n, string? value)
+    {
+        n.OrderId = Guid.TryParse(value, out var id) ? id : null;
+        n.Lines.Clear();
+        if (n.OrderId is not { } po || _orders.FirstOrDefault(o => o.Id == po) is not { } order)
+            return;
+        n.Currency = order.CurrencyCode;
+        foreach (var l in await Erp.Purchases.GetLinesAsync(po))
+            if (await Erp.Master.GetItemAsync(l.ItemId) is { } item)
+                n.Lines.Add(new LineEditor.LineDraft { Item = item, Quantity = l.ReceivedQty > 0 ? l.ReceivedQty : l.Quantity, Price = l.UnitCost, PriceEdited = true });
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (_new is not { SupplierId: { } supplier } n)
+            return;
+        _busy = true;
+        Guid id = default;
+        _error = await TryAsync(async () => id = await Erp.Payables.RegisterInvoiceAsync(new SupplierInvoiceDraft(supplier, n.OrderId, n.Number ?? "",
+            n.IssuedOn, n.DueOn, n.Currency, n.Lines.Select(l => new SupplierInvoiceLine(l.Item.Id, l.Quantity, l.Price ?? 0)).ToList())));
+        _busy = false;
+        if (_error is null)
+        {
+            _new = null;
+            await ReloadAsync();
+            var created = (await Erp.Payables.GetInvoicesAsync()).FirstOrDefault(i => i.Id == id);
+            if (created?.IsHeld == true)
+                Toasts.Info(T("payables.quedo_retenida", created.DocumentNumber));
+            else
+                Toasts.Success(T("payables.registrada", created?.DocumentNumber ?? ""));
+        }
+    }
+
+    private async Task OpenAsync(SupplierInvoiceRow i)
+    {
+        (_detail, _action, _error) = (i, null, null);
+        _payments = await Erp.Payables.GetPaymentsAsync(i.Id);
+    }
+
+    private void Start(SupplierInvoiceRow d, string action)
+    {
+        (_action, _error, _reference) = (action, null, null);
+        _amount = d.Balance;
+        _date = action == "plan" ? d.PlannedOn ?? d.DueOn : DateOnly.FromDateTime(DateTime.Now);
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_detail is not { } d)
+            return;
+        _busy = true;
+        _error = _action switch
+        {
+            "pay" => await TryAsync(() => Erp.Payables.RegisterPaymentAsync(d.Id, _amount, _date ?? DateOnly.FromDateTime(DateTime.Now), _method, _reference),
+                T("payables.pago_registrado", Fmt.Money(_amount, d.CurrencyCode))),
+            "release" => await TryAsync(() => Erp.Payables.ReleaseInvoiceAsync(d.Id, _reference ?? ""), T("payables.liberada")),
+            _ => await TryAsync(() => Erp.Payables.PlanPaymentAsync(d.Id, _date), T("payables.programada")),
+        };
+        _busy = false;
+        if (_error is null)
+        {
+            _detail = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task VoidAsync()
+    {
+        if (_detail is not { } d)
+            return;
+        _error = await TryAsync(() => Erp.Payables.VoidInvoiceAsync(d.Id), T("payables.anulada_n", d.DocumentNumber));
+        if (_error is null)
+        {
+            _detail = null;
+            await ReloadAsync();
+        }
+    }
+
+    /// <summary>Solo los tramos con saldo: por vencer, vencido 1–30, 31–60 y más de 60 días.</summary>
+    private static IEnumerable<(string Label, decimal Amount, string Tone)> Tramos(PayableSummary s) =>
+        new[]
+        {
+            (T("payables.por_vencer"), s.NotDue, ""), (T("payables.d1_30"), s.Overdue1To30, "warn-text"),
+            (T("payables.d31_60"), s.Overdue31To60, "bad-text"), (T("payables.d60"), s.OverdueOver60, "bad-text"),
+        }.Where(t => t.Item2 > 0);
+
+    private static bool Overdue(SupplierInvoiceRow i) => i.Balance > 0 && i.DueOn < DateOnly.FromDateTime(DateTime.Now);
+
+    private static (string Text, string Tone) Estado(SupplierInvoiceRow i) => i switch
+    {
+        { Status: SupplierInvoiceStatuses.Void } => (T("payables.anulada"), "neutral"),
+        { IsHeld: true } => (T("payables.retenida"), "bad"),
+        { Balance: 0 } => (T("payables.pagada"), "good"),
+        { Paid: > 0 } => (T("payables.pago_parcial"), "warn"),
+        _ when Overdue(i) => (T("payables.vencida"), "bad"),
+        _ => (T("payables.por_pagar"), "info"),
+    };
+}

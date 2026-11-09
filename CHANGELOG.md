@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Compras y cuentas por pagar (fase 4a):** solicitudes de compra con aprobación por monto; facturas de proveedor
+  con conciliación de tres vías (orden, recepción y factura) que retiene las que no cuadran; cuentas por pagar por
+  vencimiento, pagos parciales y programados; cancelación de órdenes publicada (`purchase_order.cancelled`). Se
+  replican entre equipos del ERP con `erp.record.upserted`.
 - **Listas de precios (ERP-07):** pantalla para crear y editar las listas del hub (`price_list`: moneda, vigencia, sedes y
   escalas por cantidad) y lista de cada cliente en sus condiciones comerciales. Los pedidos toman el precio de la lista
   del cliente o de la sede (con la escala de la cantidad); lo que no está en la lista lleva el descuento habitual.

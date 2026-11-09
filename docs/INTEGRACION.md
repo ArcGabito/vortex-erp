@@ -35,7 +35,8 @@ La copia local solo se actualiza desde el feed, por `id` y `version`; un alta qu
 
 ## Datos propios del ERP
 
-Pedidos, comprobantes con sus notas de crédito y débito, cobros y órdenes de compra, más lo que informan los demás sistemas: ventas de caja del POS,
+Pedidos, comprobantes con sus notas de crédito y débito, cobros, órdenes de compra, solicitudes de compra, facturas y pagos a
+proveedores, más lo que informan los demás sistemas: ventas de caja del POS,
 cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 
 ## Eventos (versión 1)
@@ -49,6 +50,8 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 | `invoice.issued` | Al emitir una factura o boleta | Id del comprobante |
 | `payment.received` | Al registrar un cobro | Id del cobro |
 | `purchase_order.created` | Al crear una orden de compra | Id de la orden |
+| `purchase_order.cancelled` | Al cancelar una orden de compra (lo recibido queda; el resto ya no se espera): `{ purchaseOrderId, number, reason }` | Determinista por orden |
+| `erp.record.upserted` | Solicitudes de compra, facturas y pagos a proveedores y ajustes de compras, para los demás equipos del ERP: `{ kind, id, updatedAt, data }` (kinds `purchase_request`, `supplier_invoice`, `supplier_payment`, `purchase_settings`) | Id nuevo |
 | `credit_note.issued` | Al emitir una nota de crédito (anulación, devolución, descuento, corrección) | Id de la nota |
 | `debit_note.issued` | Al emitir una nota de débito (intereses, aumento de valor, penalidad) | Id de la nota |
 | `invoice.voided` | Al anular un comprobante sin cobros ni notas | `DeterministicId("invoice_void", invoiceId)` |
@@ -113,8 +116,8 @@ prefijo (`PED-3F0C-000012`, `COB-…`, `OC-…`) y su propia serie de comprobant
 
 ### Limitaciones conocidas
 
-- Cancelar un pedido o una orden de compra no se replica a otros equipos: el catálogo v1 no tiene `order.cancelled`
-  ni `purchase_order.cancelled`. Según la sección 10 de la guía, se propondrá en el hub.
+- Las solicitudes, facturas y pagos a proveedores se replican con `erp.record.upserted`: si dos equipos cambian la
+  misma factura sin conexión, gana el cambio más reciente (los pagos no chocan: cada uno es su propio registro).
 - No hay envío a SUNAT (facturación electrónica): las notas y anulaciones se registran en el ERP y se informan con la
   localización fiscal (fase 7 de la hoja de ruta).
 - Si un equipo anula un comprobante sin conexión mientras otro le registra un cobro, al sincronizar queda anulado con el

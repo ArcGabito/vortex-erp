@@ -97,6 +97,7 @@ internal static class DocumentNumbers
     public const string Order = "PED";
     public const string Payment = "COB";
     public const string Purchase = "OC";
+    public const string PurchaseRequest = "SOL";
 
     /// <summary>Numeración por equipo (<c>PED-3F0C-000012</c>): dos equipos sin conexión nunca generan el mismo número.</summary>
     public static async Task<string> NextAsync(SqliteConnection c, SqliteTransaction tx, string prefix, string deviceTag) =>

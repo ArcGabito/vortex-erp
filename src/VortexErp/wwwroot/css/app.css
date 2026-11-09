@@ -1603,3 +1603,22 @@ table.data td { font-size: 13px; }
     .pl-line.pl-head > span:first-child, .pl-line.step > .pl-step { display: none; }
 }
 .pl-step { font-size: 12.5px; padding-left: 14px; }
+
+/* ---------- Compras: solicitudes (fase 4a) ---------- */
+.req-list { display: flex; flex-direction: column; gap: 10px; }
+.req-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.req-top { display: flex; align-items: flex-start; gap: 10px; }
+.req-lines { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.req-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.req-actions:empty { display: none; }
+.payable-row .aging { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--text-2); }
+.invoice-row { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; background: none; border: 0;
+    border-bottom: 1px solid var(--border); padding: 14px 0; cursor: pointer; font: inherit; color: inherit; }
+.invoice-row:last-child { border-bottom: 0; }
+.invoice-row .inv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.invoice-row .inv-number { font-weight: 700; font-size: 15px; }
+.invoice-row .inv-amount { font-size: 15px; white-space: nowrap; }
+.invoice-row .inv-supplier { font-weight: 600; font-size: 13.5px; }
+.invoice-row .inv-meta { font-size: 12.5px; color: var(--text-2); }
+.invoice-row .inv-meta.bad-text { color: var(--bad); }
+.invoice-row .inv-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
