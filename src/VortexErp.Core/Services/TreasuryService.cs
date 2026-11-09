@@ -89,14 +89,14 @@ public sealed class TreasuryService(ErpDatabase db, IErpContext context, TimePro
         RequirePermission(ErpPermissions.ManageTreasury);
         Require(!string.IsNullOrWhiteSpace(account.Name), T("error.cuenta_sin_nombre"));
         Require(account.Kind is TreasuryAccountKinds.Bank or TreasuryAccountKinds.Cash, T("error.cuenta_tipo"));
-        Require(VortexApi.Suite.Money.Currencies.IsKnown(account.CurrencyCode?.ToUpperInvariant()), T("error.moneda_desconocida", account.CurrencyCode));
+        Require(VortexApi.Suite.Money.Currencies.IsKnown((account.CurrencyCode ?? "").ToUpperInvariant()), T("error.moneda_desconocida", account.CurrencyCode));
         var methods = account.Methods.Where(PaymentMethods.All.Contains).Distinct().ToList();
         return InTransactionAsync(async (c, tx, now) =>
         {
             var data = account with
             {
                 Id = account.Id == Guid.Empty ? Guid.NewGuid() : account.Id, Name = account.Name.Trim(), Bank = Clean(account.Bank),
-                Number = Clean(account.Number), CurrencyCode = account.CurrencyCode.ToUpperInvariant(), Methods = methods,
+                Number = Clean(account.Number), CurrencyCode = (account.CurrencyCode ?? "").ToUpperInvariant(), Methods = methods,
             };
             // Un medio de pago entra por defecto a una sola cuenta de cada moneda: se quita de las otras.
             foreach (var other in (await AccountsAsync(c, tx)).Where(o => o.Id != data.Id && o.CurrencyCode == data.CurrencyCode
