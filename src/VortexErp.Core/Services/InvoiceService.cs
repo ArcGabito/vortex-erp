@@ -26,6 +26,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         RequirePermission(ErpPermissions.IssueInvoice);
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var order = await OrderService.GetAsync(c, tx, orderId);
             Require(order is not null, T("error.el_pedido_no_existe"));
             Require(order!.CanInvoice, order.InvoiceId is not null ? T("error.el_pedido_ya_tiene_comprobante") : T("error.este_pedido_no_se_puede"));
@@ -49,6 +50,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         RequirePermission(ErpPermissions.IssueInvoice);
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var orderId = await c.ScalarAsync<string?>("SELECT order_id FROM order_shipments WHERE id = $id", tx, ("$id", shipmentId));
             Require(orderId is not null, T("error.el_despacho_no_existe"));
             var order = (await OrderService.GetAsync(c, tx, Guid.Parse(orderId!)))!;
@@ -74,6 +76,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         RequirePermission(ErpPermissions.IssueInvoice);
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var sale = await PosSaleAsync(c, tx, saleId);
             Require(sale is not null, T("error.la_venta_no_existe"));
             Require(sale!.CanInvoice, sale.InvoiceId is not null ? T("error.la_venta_ya_tiene_comprobante") : T("error.la_venta_esta_anulada"));
@@ -141,6 +144,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         Require(PaymentMethods.All.Contains(method), T("error.medio_de_pago_desconocido"));
         return InTransactionAsync(async (c, tx, now) =>
     {
+        await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
         var invoice = await GetAsync(c, tx, invoiceId);
         Require(invoice is not null, T("error.el_comprobante_no_existe"));
         Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
@@ -206,6 +210,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         Require(NoteReasons.CreditReasons.Contains(reason), T("error.motivo_de_nota_desconocido"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var invoice = await GetAsync(c, tx, invoiceId);
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
@@ -231,6 +236,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         Require(NoteReasons.DebitReasons.Contains(reason), T("error.motivo_de_nota_desconocido"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var invoice = await GetAsync(c, tx, invoiceId);
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
@@ -341,6 +347,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         Require(!string.IsNullOrWhiteSpace(reason), T("error.escribe_el_motivo_de_la_anulacion"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var invoice = await GetAsync(c, tx, invoiceId);
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));

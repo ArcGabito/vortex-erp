@@ -294,5 +294,18 @@ internal static class Schema
         ALTER TABLE payments ADD COLUMN account_id TEXT;
         ALTER TABLE supplier_payments ADD COLUMN account_id TEXT;
         """,
+        // 10: contabilidad (fase 5a). Plan de cuentas (registro del ERP; sin guardar rige el del país), asientos con sus líneas:
+        // los automáticos los arma cada equipo de los documentos con Id determinista; los manuales se replican.
+        """
+        CREATE TABLE ledger_accounts (code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, is_active INTEGER NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE journal_entries (
+            id TEXT PRIMARY KEY, date TEXT NOT NULL, source TEXT NOT NULL, source_ref TEXT, description TEXT NOT NULL, status TEXT NOT NULL,
+            created_by TEXT, approved_by TEXT, reverses TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_journal_entries_date ON journal_entries (date);
+        CREATE TABLE journal_lines (
+            entry_id TEXT NOT NULL, line_no INTEGER NOT NULL, account_code TEXT NOT NULL, debit REAL NOT NULL, credit REAL NOT NULL, memo TEXT,
+            PRIMARY KEY (entry_id, line_no));
+        CREATE INDEX ix_journal_lines_account ON journal_lines (account_code);
+        """,
     ];
 }

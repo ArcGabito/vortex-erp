@@ -1631,3 +1631,15 @@ table.data td { font-size: 13px; }
 .account-balance { font-size: 22px; font-variant-numeric: tabular-nums; }
 .flow-summary { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13.5px; color: var(--text-2); }
 .flow-summary strong { color: var(--text); margin-left: 4px; }
+
+/* Contabilidad */
+.link-btn { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: inherit; text-decoration: underline; cursor: pointer; }
+.journal-entry { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.journal-entry:last-child { border-bottom: none; }
+.journal-line { display: grid; grid-template-columns: minmax(0, 1fr) 120px 120px; gap: 8px; font-size: 13px; padding-left: 12px; }
+.journal-line .num { text-align: right; font-variant-numeric: tabular-nums; }
+.statement-section { padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.statement-account { font-size: 13px; padding-left: 12px; }
+.statement-total { border-top: 2px solid var(--text); }
+.entry-line { grid-template-columns: minmax(0, 1fr) 120px 120px 36px; }
+@media (max-width: 640px) { .entry-line { grid-template-columns: 1fr 1fr 36px; } .entry-line > select { grid-column: 1 / -1; } }

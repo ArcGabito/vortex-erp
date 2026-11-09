@@ -50,17 +50,27 @@ public static class ErpPermissions
     /// <summary>Tesorería: cuentas, transferencias, extractos y conciliación.</summary>
     public const string ManageTreasury = "treasury.manage";
 
+    /// <summary>Contabilidad: plan de cuentas, ajustes, asientos manuales y cierre de periodo.</summary>
+    public const string ManageAccounting = "accounting.manage";
+
+    /// <summary>Aprobar (o revertir) asientos manuales.</summary>
+    public const string ApproveEntries = "accounting.approve";
+
     public const string ReadOnly = "consulta";
     public const string Billing = "facturador";
     public const string Purchasing = "compras";
     public const string Accountant = "contador";
+
+    /// <summary>Registra asientos manuales, que quedan para que el contador los apruebe.</summary>
+    public const string AccountingAssistant = "asistente_contable";
 
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(ReadOnly,
         (ReadOnly, []),
         (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote, RequestPurchase]),
         (Purchasing, [CreatePurchase, CancelPurchase, CreateParty, RequestPurchase]),
         (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice, ManageCredit, ApproveCredit, PaySuppliers,
-            ApprovePurchase, RequestPurchase, ManageTreasury]));
+            ApprovePurchase, RequestPurchase, ManageTreasury, ManageAccounting, ApproveEntries]),
+        (AccountingAssistant, [ManageAccounting]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -75,6 +85,8 @@ public static class ErpPermissions
         ApprovePurchase => T("permiso.approvepurchase"),
         PaySuppliers => T("permiso.paysuppliers"),
         ManageTreasury => T("permiso.managetreasury"),
+        ManageAccounting => T("permiso.manageaccounting"),
+        ApproveEntries => T("permiso.approveentries"),
         CreateParty => T("permiso.createparty"),
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),
