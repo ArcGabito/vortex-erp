@@ -1,0 +1,273 @@
+@page "/solicitudes"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("requests.solicitudes")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("requests.solicitudes_de_compra")</h2>
+            <p>@(_settings.ApprovalThreshold is { } t ? T("requests.explica_umbral", Fmt.Money(t, _currency)) : T("requests.explica"))</p>
+        </div>
+        @if (Session.Can(ErpPermissions.RequestPurchase))
+        {
+            <button class="btn btn-dark" @onclick="OpenNewAsync"><Icon Name="plus" Size="18" />@T("requests.nueva")</button>
+        }
+    </div>
+
+    <div class="filters">
+        <div class="segmented">
+            @foreach (var (value, label) in Tabs)
+            {
+                <button class="@(_status == value ? "on" : "")" @onclick="async () => { _status = value; await ReloadAsync(); }">@label</button>
+            }
+        </div>
+    </div>
+
+    @if (_rows.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="clipboard" Title="@(T("requests.sin_solicitudes"))" Text="@(T("requests.sin_solicitudes_explica"))" />
+    }
+    else
+    {
+        <div class="req-list">
+            @foreach (var r in _rows)
+            {
+                var (text, tone) = Estado(r.Status);
+                <div class="card req-card" @key="r.Id">
+                    <div class="req-top">
+                        <div class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@r.Number · @Fmt.Money(r.Total, r.CurrencyCode)</span>
+                            <span class="t2">@T("requests.pidio", r.RequestedBy ?? "—", Fmt.Date(r.RequestedAt))@(r.SiteName is null ? "" : $" · {r.SiteName}")</span>
+                        </div>
+                        <StatusPill Text="@text" Tone="@tone" />
+                    </div>
+                    <div class="req-lines">
+                        @foreach (var l in r.Lines)
+                        {
+                            <span>@Fmt.Qty(l.Quantity) × @l.ItemName@(l.UnitCost > 0 ? $" a {Fmt.Money(l.UnitCost, r.CurrencyCode)}" : "")</span>
+                        }
+                    </div>
+                    @if (r.Notes is not null)
+                    {
+                        <div class="muted" style="font-size:13px">@r.Notes</div>
+                    }
+                    @if (r.Status == PurchaseRequestStatuses.Rejected && r.Reason is not null)
+                    {
+                        <div class="bad-text" style="font-size:13px">@T("requests.rechazada_por", r.DecidedBy ?? "—", r.Reason)</div>
+                    }
+                    @if (r.PurchaseOrderNumber is { } po)
+                    {
+                        <div class="muted" style="font-size:13px">@T("requests.orden", po, r.SupplierName ?? "—")</div>
+                    }
+                    <div class="req-actions">
+                        @if (r.Status == PurchaseRequestStatuses.Pending && Session.Can(ErpPermissions.ApprovePurchase))
+                        {
+                            <button class="btn btn-dark btn-sm" disabled="@_busy" @onclick="() => ApproveAsync(r)"><Icon Name="check" Size="16" />@T("requests.aprobar")</button>
+                            <button class="btn btn-sm" @onclick="() => (_reject, _reason, _error) = (r, null, null)"><Icon Name="x" Size="16" />@T("requests.rechazar")</button>
+                        }
+                        @if (r.Status == PurchaseRequestStatuses.Approved && Session.Can(ErpPermissions.CreatePurchase))
+                        {
+                            <button class="btn btn-dark btn-sm" @onclick="() => OpenOrderAsync(r)"><Icon Name="truck" Size="16" />@T("requests.crear_orden")</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_new is { } n)
+{
+    <Modal Title="@(T("requests.nueva"))" Subtitle="@(T("requests.nueva_explica"))" Size="lg" Error="@_error" OnClose="() => _new = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("requests.para_la_sede")</label>
+                    <select class="select" @bind="n.SiteId">
+                        <option value="">@T("requests.sede_por_defecto")</option>
+                        @foreach (var s in _sites)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>@T("requests.proveedor_sugerido")</label>
+                    <select class="select" @bind="n.SupplierId">
+                        <option value="">@T("requests.sin_proveedor")</option>
+                        @foreach (var s in _suppliers)
+                        {
+                            <option value="@s.Id">@s.Label</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("requests.costo_estimado"))" Changed="StateHasChanged" />
+            <div class="field">
+                <label>@T("requests.para_que")</label>
+                <textarea class="control" rows="2" @bind="n.Notes"></textarea>
+            </div>
+            <dl class="totals">
+                <dt class="grand">@T("requests.total_estimado")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), _currency)</dd>
+            </dl>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _new = null">@T("requests.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0)" @onclick="CreateAsync">@T("requests.pedir")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_reject is { } rj)
+{
+    <Modal Title="@(T("requests.rechazar_n", rj.Number))" Size="sm" Error="@_error" OnClose="() => _reject = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("requests.motivo")</label>
+                <input class="control" @bind="_reason" placeholder="@(T("requests.motivo_ej"))" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _reject = null">@T("requests.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="RejectAsync">@T("requests.rechazar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_order is { } o)
+{
+    <Modal Title="@(T("requests.orden_de", o.Number))" Subtitle="@(T("requests.orden_explica"))" Size="sm" Error="@_error" OnClose="() => _order = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("requests.proveedor")</label>
+                <select class="select" @bind="_supplier">
+                    <option value="">@T("requests.elige_el_proveedor")</option>
+                    @foreach (var s in _suppliers)
+                    {
+                        <option value="@s.Id">@s.Label</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label>@T("requests.llega_el")</label>
+                <input class="control" type="date" @bind="_expected" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _order = null">@T("requests.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || string.IsNullOrEmpty(_supplier))" @onclick="OrderAsync">@T("requests.crear_orden")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private static readonly (string? Value, string Label)[] Tabs =
+        [(PurchaseRequestStatuses.Pending, T("requests.por_aprobar")), (PurchaseRequestStatuses.Approved, T("requests.aprobadas")), (null, T("requests.todas"))];
+
+    private IReadOnlyList<PurchaseRequestRow> _rows = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<Option> _suppliers = [];
+    private PurchaseSettings _settings = PurchaseSettings.Default;
+    private string? _status = PurchaseRequestStatuses.Pending, _reason, _supplier, _error;
+    private string _currency = "PEN";
+    private DateOnly? _expected;
+    private PurchaseRequestRow? _reject, _order;
+    private NewRequest? _new;
+    private bool _busy;
+
+    private sealed class NewRequest
+    {
+        public Guid? SiteId { get; set; }
+        public Guid? SupplierId { get; set; }
+        public string? Notes { get; set; }
+        public List<LineEditor.LineDraft> Lines { get; } = [];
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _rows = await Erp.Payables.GetRequestsAsync(_status);
+        _settings = await Erp.Payables.GetSettingsAsync();
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+    }
+
+    private async Task OpenNewAsync()
+    {
+        _error = null;
+        _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
+        _suppliers = await Erp.Master.GetPartyOptionsAsync(suppliers: true);
+        _new = new NewRequest { SiteId = Session.DefaultSiteId };
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_new is not { } n)
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Erp.Payables.CreateRequestAsync(n.SiteId, n.SupplierId,
+            n.Lines.Select(l => new PurchaseRequestLine(l.Item.Id, l.Quantity, l.Price)).ToList(), _currency, n.Notes));
+        _busy = false;
+        if (_error is null)
+        {
+            var created = (await Erp.Payables.GetRequestsAsync()).FirstOrDefault(r => r.Number == number);
+            Toasts.Success(created?.Status == PurchaseRequestStatuses.Pending ? T("requests.enviada_a_aprobar", number) : T("requests.aprobada_n", number));
+            // Se muestra donde quedó: por aprobar o ya aprobada (lista para la orden).
+            _status = created?.Status ?? _status;
+            _new = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ApproveAsync(PurchaseRequestRow r)
+    {
+        _busy = true;
+        await RunAsync(() => Erp.Payables.ApproveRequestAsync(r.Id), T("requests.aprobada_n", r.Number));
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task RejectAsync()
+    {
+        if (_reject is not { } r)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Payables.RejectRequestAsync(r.Id, _reason ?? ""), T("requests.rechazada_n", r.Number));
+        _busy = false;
+        if (_error is null)
+        {
+            _reject = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenOrderAsync(PurchaseRequestRow r)
+    {
+        _suppliers = await Erp.Master.GetPartyOptionsAsync(suppliers: true);
+        (_order, _supplier, _expected, _error) = (r, r.SupplierId?.ToString(), null, null);
+    }
+
+    private async Task OrderAsync()
+    {
+        if (_order is not { } r || !Guid.TryParse(_supplier, out var supplier))
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Erp.Payables.OrderRequestAsync(r.Id, supplier, null, _expected));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success(T("requests.orden_creada", number));
+            _order = null;
+            await ReloadAsync();
+        }
+    }
+
+    private static (string Text, string Tone) Estado(string status) => status switch
+    {
+        PurchaseRequestStatuses.Pending => (T("requests.por_aprobar"), "warn"),
+        PurchaseRequestStatuses.Approved => (T("requests.aprobada"), "good"),
+        PurchaseRequestStatuses.Rejected => (T("requests.rechazada"), "bad"),
+        _ => (T("requests.con_orden"), "neutral"),
+    };
+}

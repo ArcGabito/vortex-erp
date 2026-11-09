@@ -38,6 +38,15 @@ public static class ErpPermissions
     /// <summary>Aprobar un pedido que supera el límite de crédito del cliente.</summary>
     public const string ApproveCredit = "order.approve_credit";
 
+    /// <summary>Pedir una compra (solicitud).</summary>
+    public const string RequestPurchase = "purchase.request";
+
+    /// <summary>Aprobar solicitudes y órdenes sobre el umbral, liberar facturas retenidas y fijar los ajustes de compras.</summary>
+    public const string ApprovePurchase = "purchase.approve";
+
+    /// <summary>Registrar facturas de proveedor y sus pagos.</summary>
+    public const string PaySuppliers = "supplier.pay";
+
     public const string ReadOnly = "consulta";
     public const string Billing = "facturador";
     public const string Purchasing = "compras";
@@ -45,9 +54,10 @@ public static class ErpPermissions
 
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(ReadOnly,
         (ReadOnly, []),
-        (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote]),
-        (Purchasing, [CreatePurchase, CancelPurchase, CreateParty]),
-        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice, ManageCredit, ApproveCredit]));
+        (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote, RequestPurchase]),
+        (Purchasing, [CreatePurchase, CancelPurchase, CreateParty, RequestPurchase]),
+        (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice, ManageCredit, ApproveCredit, PaySuppliers,
+            ApprovePurchase, RequestPurchase]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -58,6 +68,9 @@ public static class ErpPermissions
         RegisterPayment => T("permiso.registerpayment"),
         CreatePurchase => T("permiso.createpurchase"),
         CancelPurchase => T("permiso.cancelpurchase"),
+        RequestPurchase => T("permiso.requestpurchase"),
+        ApprovePurchase => T("permiso.approvepurchase"),
+        PaySuppliers => T("permiso.paysuppliers"),
         CreateParty => T("permiso.createparty"),
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),

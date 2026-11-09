@@ -436,3 +436,63 @@ public sealed class PriceBook(Guid? listId, string? listName, string currency, d
             ? DiscountPercent > 0 ? VortexApi.Suite.Money.Currencies.Get(Currency).Round(price * (1 - DiscountPercent / 100m)) : price
             : null);
 }
+
+// ---------- Compras y cuentas por pagar (fase 4a) ----------
+
+/// <summary>Ajustes de compras: sobre qué monto (en la moneda de la empresa) una compra necesita aprobación y cuánto puede
+/// diferir el costo facturado del de la orden antes de retener la factura.</summary>
+public sealed record PurchaseSettings(decimal? ApprovalThreshold, decimal PriceTolerancePercent = 2)
+{
+    public static PurchaseSettings Default { get; } = new(ApprovalThreshold: null);
+}
+
+public static class PurchaseRequestStatuses
+{
+    /// <summary>Supera el umbral: espera la aprobación.</summary>
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+
+    /// <summary>Ya se convirtió en orden de compra.</summary>
+    public const string Ordered = "ordered";
+}
+
+public sealed record PurchaseRequestLine(Guid ItemId, decimal Quantity, decimal? UnitCost = null);
+
+public sealed record PurchaseRequestRow(
+    Guid Id, string Number, Guid? SiteId, string? SiteName, Guid? SupplierId, string? SupplierName, string Status, string CurrencyCode,
+    decimal Total, string? Notes, string? RequestedBy, DateTimeOffset RequestedAt, string? DecidedBy, DateTimeOffset? DecidedAt,
+    string? Reason, Guid? PurchaseOrderId, string? PurchaseOrderNumber, IReadOnlyList<PurchaseLineRow> Lines);
+
+public static class SupplierInvoiceStatuses
+{
+    /// <summary>No cuadra con la orden o lo recibido: no se paga hasta que alguien con permiso la libere.</summary>
+    public const string Held = "held";
+    public const string Approved = "approved";
+    public const string Void = "void";
+}
+
+public sealed record SupplierInvoiceLine(Guid ItemId, decimal Quantity, decimal UnitCost);
+
+/// <param name="UnitCost">Costo sin impuesto, como en la orden de compra.</param>
+public sealed record SupplierInvoiceDraft(Guid SupplierId, Guid? PurchaseOrderId, string DocumentNumber, DateOnly IssuedOn, DateOnly? DueOn,
+    string CurrencyCode, IReadOnlyList<SupplierInvoiceLine> Lines);
+
+public sealed record SupplierInvoiceRow(
+    Guid Id, Guid SupplierId, string? SupplierName, Guid? PurchaseOrderId, string? PurchaseOrderNumber, string DocumentNumber,
+    DateOnly IssuedOn, DateOnly DueOn, string CurrencyCode, decimal Subtotal, decimal Tax, decimal Total, decimal Paid, string Status,
+    string? MatchNote, string? ReleasedBy, string? ReleaseReason, DateOnly? PlannedOn, DateTimeOffset CreatedAt)
+{
+    public decimal Balance => Status == SupplierInvoiceStatuses.Void ? 0 : Math.Max(0, Total - Paid);
+    public bool IsHeld => Status == SupplierInvoiceStatuses.Held;
+}
+
+public sealed record SupplierPaymentRow(Guid Id, Guid InvoiceId, decimal Amount, DateOnly PaidOn, string Method, string? Reference,
+    DateTimeOffset CreatedAt, string? UserName);
+
+/// <summary>Cuentas por pagar de un proveedor: lo que debe por tramo de vencimiento (moneda de cada factura).</summary>
+public sealed record PayableSummary(Guid SupplierId, string SupplierName, string CurrencyCode, decimal NotDue, decimal Overdue1To30,
+    decimal Overdue31To60, decimal OverdueOver60, int Invoices, int Held)
+{
+    public decimal Total => NotDue + Overdue1To30 + Overdue31To60 + OverdueOver60;
+}

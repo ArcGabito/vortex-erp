@@ -48,12 +48,12 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | ERP-25 | Órdenes de compra recibidas por el WMS | Hecho | — |
-| ERP-26 | Solicitudes de compra (también las sugeridas por el WMS) | Pendiente | 4 |
-| ERP-27 | Aprobación de compras por monto | Pendiente | 4 |
-| ERP-28 | Factura de proveedor con conciliación de tres vías (OC, recepción, factura) | Pendiente | 4 |
-| ERP-29 | Cuentas por pagar con vencimientos | Pendiente | 4 |
-| ERP-30 | Programación y registro de pagos a proveedores | Pendiente | 4 |
-| ERP-31 | Cancelación de órdenes de compra, replicada | Pendiente | 4 |
+| ERP-26 | Solicitudes de compra (también las sugeridas por el WMS) | Parcial: falta recibir las del WMS (`purchase.requested`, fase 6 del WMS) | 4a |
+| ERP-27 | Aprobación de compras por monto | Hecho | 4a |
+| ERP-28 | Factura de proveedor con conciliación de tres vías (OC, recepción, factura) | Hecho | 4a |
+| ERP-29 | Cuentas por pagar con vencimientos | Hecho | 4a |
+| ERP-30 | Programación y registro de pagos a proveedores | Hecho | 4a |
+| ERP-31 | Cancelación de órdenes de compra, replicada | Hecho | 4a |
 
 ### Tesorería
 
@@ -218,6 +218,22 @@ pendientes anticipos (ERP-19) y facturación recurrente (ERP-10).
 
 **Terminado cuando:** una factura de proveedor que no cuadra con lo recibido queda retenida; un extracto importado
 concilia cobros y pagos automáticamente y deja visibles los que no encuentran pareja.
+
+**Partes:** 4a, compras y cuentas por pagar (ERP-26 a ERP-31); 4b, tesorería (ERP-35 a ERP-39).
+
+**Estado 4a (2026-11):** hecha. **Solicitudes de compra** (pantalla Solicitudes) con aprobación por monto: sobre el
+umbral de Configuración (en la moneda de la empresa) quedan por aprobar, salvo que las pida quien puede aprobar; una
+orden directa sobre el umbral solo la crea quien aprueba. Aprobada, se convierte en orden con el proveedor elegido.
+**Facturas de proveedor** (pantalla Por pagar) con conciliación de tres vías contra la orden: cada artículo debe estar
+en la orden, lo facturado (sumando las facturas anteriores) no puede pasar de lo recibido y el costo no puede diferir
+más que la tolerancia (2 % por defecto); si algo no cuadra queda **retenida** con las diferencias y no se paga hasta que
+alguien con permiso la libera con un motivo. **Cuentas por pagar** por proveedor en tramos de vencimiento (el
+vencimiento sale del plazo del proveedor si no se escribe), **pagos** parciales y **programación** de la fecha de pago.
+**Cancelar una orden** (también recibida en parte) pide motivo y se publica `purchase_order.cancelled`
+(vortex-api#37). Solicitudes, facturas, pagos y ajustes se replican entre los equipos del ERP como
+`erp.record.upserted` (gana el más nuevo); los pagos son registros aparte, así dos equipos que pagan sin conexión suman
+los dos. Nuevos permisos: pedir compras, aprobar compras y pagar a proveedores (rol contador). Pruebas en
+`PayablesTests`. Falta recibir las sugerencias de compra del WMS (`purchase.requested`, fase 6 del WMS).
 
 ## Fase 5: contabilidad · XL
 

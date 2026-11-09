@@ -48,6 +48,8 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.DebitNoteIssued, HandleDebitNoteIssuedAsync)
         .OnEvent(SuiteEvents.InvoiceVoided, HandleInvoiceVoidedAsync)
         .OnEvent(SuiteEvents.PurchaseOrderCreated, HandlePurchaseOrderCreatedAsync)
+        .OnEvent(SuiteEvents.PurchaseOrderCancelled, HandlePurchaseOrderCancelledAsync)
+        .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync);
 
@@ -177,6 +179,25 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
                 return "ignorado: las órdenes de compra solo las emite el ERP";
             await PurchaseService.ApplyCreatedAsync(c, tx, e.OccurredAt, po);
             return null;
+        }, ct);
+
+    /// <summary>Orden de compra cancelada en otro equipo del ERP.</summary>
+    public Task HandlePurchaseOrderCancelledAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<PurchaseOrderCancelled>(e, async (po, c, tx) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: las órdenes de compra solo las cancela el ERP";
+            await PurchaseService.ApplyCancelledAsync(c, tx, po);
+            return null;
+        }, ct);
+
+    /// <summary>Solicitudes, facturas y pagos a proveedores y ajustes de compras de otro equipo del ERP (gana el más nuevo).</summary>
+    public Task HandleRecordUpsertedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<ErpRecord>(e, async (r, c, tx) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: solo lo publica el ERP";
+            return await PayablesService.ApplyAsync(c, tx, r) ? null : $"sin cambios ({r.Kind}: ya tenía uno más nuevo o es desconocido)";
         }, ct);
 
     // ---------- WMS ----------

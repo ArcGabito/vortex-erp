@@ -14,6 +14,12 @@ public static class SuiteEvents
     public const string InvoiceIssued = "invoice.issued";
     public const string PaymentReceived = "payment.received";
     public const string PurchaseOrderCreated = "purchase_order.created";
+
+    /// <summary>Orden de compra cancelada: lo recibido queda; el resto ya no se espera (WMS y otros equipos del ERP).</summary>
+    public const string PurchaseOrderCancelled = "purchase_order.cancelled";
+
+    /// <summary>Replicación interna del ERP: solicitudes de compra, facturas y pagos a proveedores, ajustes de compras.</summary>
+    public const string RecordUpserted = "erp.record.upserted";
     public const string CreditNoteIssued = "credit_note.issued";
     public const string DebitNoteIssued = "debit_note.issued";
     public const string InvoiceVoided = "invoice.voided";
@@ -94,6 +100,19 @@ public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal Un
 public sealed record PurchaseOrderCreated(
     Guid PurchaseOrderId, string? Number, Guid SupplierId, Guid SiteId, IReadOnlyList<PurchaseOrderLine>? Lines,
     string? CurrencyCode = null, decimal Total = 0, DateOnly? ExpectedAt = null);
+
+public sealed record PurchaseOrderCancelled(Guid PurchaseOrderId, string? Number, string? Reason);
+
+public static class ErpRecordKinds
+{
+    public const string PurchaseRequest = "purchase_request";
+    public const string SupplierInvoice = "supplier_invoice";
+    public const string SupplierPayment = "supplier_payment";
+    public const string PurchaseSettings = "purchase_settings";
+}
+
+/// <summary><c>erp.record.upserted</c>: la versión completa de un registro propio del ERP (gana el más nuevo por <c>UpdatedAt</c>).</summary>
+public sealed record ErpRecord(string Kind, string Id, DateTimeOffset UpdatedAt, System.Text.Json.JsonElement Data);
 
 // ---------- Consumidos por el ERP ----------
 

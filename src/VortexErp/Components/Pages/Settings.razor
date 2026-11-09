@@ -146,6 +146,34 @@
             <div class="card">
                 <div class="card-head">
                     <div>
+                        <h3>@T("settings.compras")</h3>
+                        <div class="sub">@T("settings.compras_explica")</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <div class="field">
+                            <label>@T("settings.aprobar_desde", _companyCurrency)</label>
+                            <input class="control" type="number" inputmode="decimal" min="0" step="100" placeholder="@(T("settings.sin_aprobacion"))"
+                                   disabled="@(!Session.Can(ErpPermissions.ApprovePurchase))" @bind="_threshold" />
+                        </div>
+                        <div class="field">
+                            <label>@T("settings.tolerancia_de_costo")</label>
+                            <input class="control" type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                                   disabled="@(!Session.Can(ErpPermissions.ApprovePurchase))" @bind="_tolerance" />
+                        </div>
+                    </div>
+                    <span class="hint">@T("settings.compras_hint")</span>
+                    @if (Session.Can(ErpPermissions.ApprovePurchase))
+                    {
+                        <div style="margin-top:12px"><button class="btn btn-dark btn-sm" @onclick="SavePurchaseSettingsAsync">@T("settings.guardar")</button></div>
+                    }
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head">
+                    <div>
                         <h3>@T("settings.tipos_de_cambio")</h3>
                         <div class="sub">@T("settings.tipos_de_cambio_explica")</div>
                     </div>
@@ -204,8 +232,18 @@
     private static string RateSides(ExchangeRateRow r) =>
         r.BuyRate is null && r.SellRate is null ? "" : " · " + T("settings.compra_venta", Fmt.Rate(r.BuyRate ?? r.Rate), Fmt.Rate(r.SellRate ?? r.Rate));
 
+    private decimal? _threshold;
+    private decimal _tolerance = 2;
+    private string _companyCurrency = "PEN";
+
+    private Task SavePurchaseSettingsAsync() =>
+        RunAsync(() => Erp.Payables.SaveSettingsAsync(new PurchaseSettings(_threshold, _tolerance)), T("settings.compras_guardadas"));
+
     protected override async Task LoadAsync()
     {
+        var purchase = await Erp.Payables.GetSettingsAsync();
+        (_threshold, _tolerance) = (purchase.ApprovalThreshold, purchase.PriceTolerancePercent);
+        _companyCurrency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
         _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
         _rates = await Erp.Master.GetLatestExchangeRatesAsync();
         _failed = await Session.GetFailedAsync();

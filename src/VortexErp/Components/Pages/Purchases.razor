@@ -57,10 +57,18 @@
                                 <td class="num strong">@Fmt.Money(o.Total, o.CurrencyCode)</td>
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col" @onclick:stopPropagation>
-                                    @if (o.Status == PurchaseStatuses.Open && Session.Can(ErpPermissions.CancelPurchase))
+                                    @if ((o.Status is PurchaseStatuses.Open or PurchaseStatuses.Partial && Session.Can(ErpPermissions.CancelPurchase))
+                                         || Session.Can(ErpPermissions.PaySuppliers))
                                     {
                                         <KebabMenu>
-                                            <button class="danger" @onclick="() => CancelAsync(o)"><Icon Name="ban" Size="18" />@T("purchases.cancelar")</button>
+                                            @if (Session.Can(ErpPermissions.PaySuppliers) && o.Received > 0)
+                                            {
+                                                <button @onclick='() => Nav.NavigateTo($"por-pagar?orden={o.Id}")'><Icon Name="receipt" Size="18" />@T("purchases.registrar_factura")</button>
+                                            }
+                                            @if (o.Status is PurchaseStatuses.Open or PurchaseStatuses.Partial && Session.Can(ErpPermissions.CancelPurchase))
+                                            {
+                                                <button class="danger" @onclick="() => (_cancel, _reason, _error) = (o, null, null)"><Icon Name="ban" Size="18" />@T("purchases.cancelar")</button>
+                                            }
                                         </KebabMenu>
                                     }
                                 </td>
@@ -147,7 +155,24 @@
     </Modal>
 }
 
+@if (_cancel is { } cx)
+{
+    <Modal Title="@(T("purchases.cancelar_n", cx.Number))" Subtitle="@(cx.Received > 0 ? T("purchases.cancelar_parcial_explica") : T("purchases.cancelar_explica"))"
+           Size="sm" Error="@_error" OnClose="() => _cancel = null">
+        <ChildContent>
+            <div class="field"><label>@T("purchases.motivo")</label><input class="control" @bind="_reason" /></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _cancel = null">@T("purchases.volver")</button>
+            <button class="btn btn-danger" disabled="@_busy" @onclick="CancelAsync">@T("purchases.cancelar_orden")</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
+    private PurchaseRow? _cancel;
+    private string? _reason;
+
     private sealed class NewPurchase
     {
         public Guid? SupplierId { get; set; }
@@ -223,7 +248,19 @@
         _detail = order;
     }
 
-    private Task CancelAsync(PurchaseRow order) => RunAsync(() => Erp.Purchases.CancelAsync(order.Id), T("purchases.orden_cancelada", order.Number));
+    private async Task CancelAsync()
+    {
+        if (_cancel is not { } order)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Purchases.CancelAsync(order.Id, _reason), T("purchases.orden_cancelada", order.Number));
+        _busy = false;
+        if (_error is null)
+        {
+            _cancel = null;
+            await ReloadAsync();
+        }
+    }
 
     public override void Dispose()
     {

@@ -1603,3 +1603,12 @@ table.data td { font-size: 13px; }
     .pl-line.pl-head > span:first-child, .pl-line.step > .pl-step { display: none; }
 }
 .pl-step { font-size: 12.5px; padding-left: 14px; }
+
+/* ---------- Compras: solicitudes (fase 4a) ---------- */
+.req-list { display: flex; flex-direction: column; gap: 10px; }
+.req-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.req-top { display: flex; align-items: flex-start; gap: 10px; }
+.req-lines { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.req-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.req-actions:empty { display: none; }
+.payable-row .aging { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--text-2); }
