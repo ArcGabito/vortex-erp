@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Tesorería (fase 4b):** cuentas bancarias y cajas con su saldo (los cobros y pagos entran solos a la cuenta de su
+  medio de pago), transferencias entre cuentas y monedas, comisiones e intereses, importación de extractos CSV, OFX y
+  CAMT.053 con conciliación automática y manual, flujo de caja proyectado por semana y depósitos de las cajas del POS
+  (`cash.deposited`).
 - **Compras y cuentas por pagar (fase 4a):** solicitudes de compra con aprobación por monto; facturas de proveedor
   con conciliación de tres vías (orden, recepción y factura) que retiene las que no cuadran; cuentas por pagar por
   vencimiento, pagos parciales y programados; cancelación de órdenes publicada (`purchase_order.cancelled`). Se

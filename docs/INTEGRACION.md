@@ -48,7 +48,7 @@ cotizaciones aceptadas y oportunidades ganadas del CRM, y el stock del WMS.
 | `order.created` | Al crear un pedido (manual o desde una cotización) | Id del pedido |
 | `order.approved` | Al aprobar un pedido que superaba el límite de crédito del cliente | Determinista por pedido |
 | `invoice.issued` | Al emitir una factura o boleta | Id del comprobante |
-| `payment.received` | Al registrar un cobro | Id del cobro |
+| `payment.received` | Al registrar un cobro (con `accountId`, la cuenta de tesorería donde entró) | Id del cobro |
 | `purchase_order.created` | Al crear una orden de compra | Id de la orden |
 | `purchase_order.cancelled` | Al cancelar una orden de compra (lo recibido queda; el resto ya no se espera): `{ purchaseOrderId, number, reason }` | Determinista por orden |
 | `erp.record.upserted` | Solicitudes de compra, facturas y pagos a proveedores y ajustes de compras, para los demás equipos del ERP: `{ kind, id, updatedAt, data }` (kinds `purchase_request`, `supplier_invoice`, `supplier_payment`, `purchase_settings`) | Id nuevo |
@@ -95,6 +95,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `shipment.dispatched` (WMS) | Guarda el despacho con sus líneas; el pedido queda despachado (o despachado en parte con `partial: true`) y cada despacho se puede facturar |
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
+| `cash.deposited` (POS) | El efectivo depositado sale de la caja y entra a la cuenta bancaria predeterminada de la moneda, para conciliarlo con el extracto (Ids deterministas por depósito) |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
 | Cambio de `party` (datos maestros) | Copia local del cliente con sus condiciones (`credit`: plazo, límite, descuento) |

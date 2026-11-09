@@ -130,7 +130,11 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     /// en la moneda del comprobante y la diferencia con el tipo de la emisión queda como diferencia de cambio.
     /// </summary>
     public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, string? paidCurrency = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default) => RegisterPaymentAsync(invoiceId, amount, method, reference, paidCurrency, null, ct);
+
+    /// <param name="accountId">Cuenta de tesorería donde entra; sin ella, la predeterminada del medio de pago y la moneda.</param>
+    public Task<string> RegisterPaymentAsync(Guid invoiceId, decimal amount, string method, string? reference, string? paidCurrency,
+        Guid? accountId, CancellationToken ct = default)
     {
         RequirePermission(ErpPermissions.RegisterPayment);
         Require(amount > 0, T("error.el_monto_debe_ser_mayor"));
@@ -163,7 +167,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var id = Guid.NewGuid();
         var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Payment, Context.DeviceTag);
         var e = new PaymentReceived(id, invoice.CustomerId, invoiceId, invoice.SaleId, applied, invoice.CurrencyCode, method, number, Clean(reference),
-            paidAmount, paidAmount is null ? null : paid, rate, fx);
+            paidAmount, paidAmount is null ? null : paid, rate, fx, accountId);
         await InsertPaymentAsync(c, tx, e, now, Context.UserName);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.PaymentReceived, e, subjectType: "invoice", subjectId: invoice.Number, id: id);
         await AuditAsync(c, tx, now, AuditActions.PaymentRegistered, "invoice", invoiceId, invoice.Number,
@@ -656,12 +660,12 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     {
         await c.ExecAsync("""
             INSERT INTO payments (id, number, customer_id, invoice_id, sale_id, amount, currency_code, method, reference, received_at, user_name,
-                                  paid_amount, paid_currency, exchange_rate, fx_difference)
-            VALUES ($id, $number, $customer, $invoice, $sale, $amount, $currency, $method, $ref, $at, $user, $paid, $paidCurrency, $rate, $fx)
+                                  paid_amount, paid_currency, exchange_rate, fx_difference, account_id)
+            VALUES ($id, $number, $customer, $invoice, $sale, $amount, $currency, $method, $ref, $at, $user, $paid, $paidCurrency, $rate, $fx, $account)
             """, tx, ("$id", e.PaymentId), ("$number", e.Number ?? e.PaymentId.ToString()[..8].ToUpperInvariant()), ("$customer", e.CustomerId),
             ("$invoice", e.InvoiceId), ("$sale", e.SaleId), ("$amount", e.Amount), ("$currency", e.CurrencyCode), ("$method", e.Method),
             ("$ref", e.Reference), ("$at", at), ("$user", userName), ("$paid", e.PaidAmount), ("$paidCurrency", e.PaidCurrency),
-            ("$rate", e.ExchangeRate), ("$fx", e.FxDifference));
+            ("$rate", e.ExchangeRate), ("$fx", e.FxDifference), ("$account", e.AccountId));
         if (e.InvoiceId is { } invoice)
             // Tope: lo que vale el comprobante con sus notas (un cobro repetido de otro equipo no lo pasa). Nunca baja lo cobrado.
             await c.ExecAsync("UPDATE invoices SET paid = MAX(paid, MIN(total + debited - credited, paid + $amount)) WHERE id = $id", tx,

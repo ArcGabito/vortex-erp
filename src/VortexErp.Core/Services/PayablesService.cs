@@ -301,8 +301,9 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
         }, ct);
 
     /// <summary>Paga (todo o una parte) una factura aprobada.</summary>
+    /// <param name="accountId">Cuenta de tesorería de la que sale; sin ella, la predeterminada del medio de pago y la moneda.</param>
     public Task<Guid> RegisterPaymentAsync(Guid invoiceId, decimal amount, DateOnly paidOn, string method, string? reference = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default, Guid? accountId = null)
     {
         RequirePermission(ErpPermissions.PaySuppliers);
         Require(amount > 0, T("error.el_monto_debe_ser_mayor"));
@@ -314,7 +315,7 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
             Require(inv.Status == SupplierInvoiceStatuses.Approved, T("error.la_factura_ya_esta_anulada"));
             var paid = await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE invoice_id = $id", tx, ("$id", invoiceId));
             Require(amount <= inv.Total - paid, T("error.el_pago_supera_el_saldo", (inv.Total - paid).ToString("0.00", CultureInfo.InvariantCulture)));
-            var data = new SupplierPaymentData(Guid.NewGuid(), invoiceId, amount, paidOn, method, Clean(reference), now, Context.UserName);
+            var data = new SupplierPaymentData(Guid.NewGuid(), invoiceId, amount, paidOn, method, Clean(reference), now, Context.UserName, accountId);
             await PublishAsync(c, tx, now, ErpRecordKinds.SupplierPayment, data.Id.ToString(), data);
             if (inv.PlannedOn is not null && amount >= inv.Total - paid)
                 await PublishAsync(c, tx, now, ErpRecordKinds.SupplierInvoice, invoiceId.ToString(), inv with { PlannedOn = null });
@@ -400,7 +401,7 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
         string? ReleaseReason, DateOnly? PlannedOn, DateTimeOffset CreatedAt, string? UserName, IReadOnlyList<SupplierInvoiceLine> Lines);
 
     public sealed record SupplierPaymentData(Guid Id, Guid InvoiceId, decimal Amount, DateOnly PaidOn, string Method, string? Reference,
-        DateTimeOffset CreatedAt, string? UserName);
+        DateTimeOffset CreatedAt, string? UserName, Guid? AccountId = null);
 
     /// <summary>Guarda el registro aquí (gana: es el cambio más reciente de este equipo) y lo encola para los demás equipos.</summary>
     private static async Task PublishAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string kind, string id, object data)
@@ -482,12 +483,13 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
                 if (!Newer(await c.ScalarAsync<string?>("SELECT updated_at FROM supplier_payments WHERE id = $id", tx, ("$id", d.Id))))
                     return false;
                 await c.ExecAsync("""
-                    INSERT INTO supplier_payments (id, invoice_id, amount, paid_on, method, reference, created_at, user_name, updated_at)
-                    VALUES ($id, $inv, $amount, $paid, $method, $ref, $created, $user, $upd)
+                    INSERT INTO supplier_payments (id, invoice_id, amount, paid_on, method, reference, created_at, user_name, updated_at, account_id)
+                    VALUES ($id, $inv, $amount, $paid, $method, $ref, $created, $user, $upd, $account)
                     ON CONFLICT (id) DO UPDATE SET invoice_id = $inv, amount = $amount, paid_on = $paid, method = $method, reference = $ref,
-                        created_at = $created, user_name = $user, updated_at = $upd
+                        created_at = $created, user_name = $user, updated_at = $upd, account_id = $account
                     """, tx, ("$id", d.Id), ("$inv", d.InvoiceId), ("$amount", d.Amount), ("$paid", d.PaidOn.ToString("yyyy-MM-dd")),
-                    ("$method", d.Method), ("$ref", d.Reference), ("$created", d.CreatedAt), ("$user", d.UserName), ("$upd", r.UpdatedAt));
+                    ("$method", d.Method), ("$ref", d.Reference), ("$created", d.CreatedAt), ("$user", d.UserName), ("$upd", r.UpdatedAt),
+                    ("$account", d.AccountId));
                 return true;
             }
 

@@ -17,6 +17,7 @@ public sealed class ErpWorkspace
         Master = new MasterDataService(db, context, clock);
         PriceLists = new PriceListService(db, context, clock);
         Payables = new PayablesService(db, context, clock);
+        Treasury = new TreasuryService(db, context, clock);
         Orders = new OrderService(db, context, clock);
         Invoices = new InvoiceService(db, context, clock);
         Purchases = new PurchaseService(db, context, clock);
@@ -30,6 +31,7 @@ public sealed class ErpWorkspace
     public MasterDataService Master { get; }
     public PriceListService PriceLists { get; }
     public PayablesService Payables { get; }
+    public TreasuryService Treasury { get; }
     public OrderService Orders { get; }
     public InvoiceService Invoices { get; }
     public PurchaseService Purchases { get; }

@@ -33,6 +33,9 @@ public static class SuiteEvents
     public const string GoodsReceived = "goods.received";
     public const string StockAdjusted = "stock.adjusted";
     public const string ShipmentDispatched = "shipment.dispatched";
+
+    /// <summary>Efectivo de una caja del POS depositado en el banco (tesorería, ERP-39).</summary>
+    public const string CashDeposited = "cash.deposited";
 }
 
 public sealed record QuantityLine(Guid ItemId, decimal Quantity);
@@ -72,7 +75,11 @@ public sealed record InvoiceIssued(
 public sealed record PaymentReceived(
     Guid PaymentId, Guid? CustomerId, Guid? InvoiceId, Guid? SaleId, decimal Amount, string CurrencyCode, string Method,
     string? Number = null, string? Reference = null, decimal? PaidAmount = null, string? PaidCurrency = null,
-    decimal? ExchangeRate = null, decimal? FxDifference = null);
+    decimal? ExchangeRate = null, decimal? FxDifference = null, Guid? AccountId = null);
+
+/// <summary><c>cash.deposited</c> (POS): efectivo de una caja llevado al banco.</summary>
+public sealed record CashDeposited(Guid DepositId, Guid SiteId, decimal Amount, string CurrencyCode, string? Reference = null, string? Bank = null,
+    DateOnly? DepositedOn = null, Guid? SessionId = null, string? UserName = null);
 
 /// <summary>
 /// <c>credit_note.issued</c> y <c>debit_note.issued</c>: nota vinculada a un comprobante. <c>reason</c> es un motivo común
@@ -109,6 +116,9 @@ public static class ErpRecordKinds
     public const string SupplierInvoice = "supplier_invoice";
     public const string SupplierPayment = "supplier_payment";
     public const string PurchaseSettings = "purchase_settings";
+    public const string TreasuryAccount = "treasury_account";
+    public const string TreasuryMovement = "treasury_movement";
+    public const string StatementLine = "statement_line";
 }
 
 /// <summary><c>erp.record.upserted</c>: la versión completa de un registro propio del ERP (gana el más nuevo por <c>UpdatedAt</c>).</summary>

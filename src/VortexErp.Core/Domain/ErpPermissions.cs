@@ -47,6 +47,9 @@ public static class ErpPermissions
     /// <summary>Registrar facturas de proveedor y sus pagos.</summary>
     public const string PaySuppliers = "supplier.pay";
 
+    /// <summary>Tesorería: cuentas, transferencias, extractos y conciliación.</summary>
+    public const string ManageTreasury = "treasury.manage";
+
     public const string ReadOnly = "consulta";
     public const string Billing = "facturador";
     public const string Purchasing = "compras";
@@ -57,7 +60,7 @@ public static class ErpPermissions
         (Billing, [CreateOrder, CancelOrder, ConvertQuote, IssueInvoice, RegisterPayment, CreateParty, IssueNote, RequestPurchase]),
         (Purchasing, [CreatePurchase, CancelPurchase, CreateParty, RequestPurchase]),
         (Accountant, [IssueInvoice, RegisterPayment, ViewAudit, IssueNote, VoidInvoice, ManageCredit, ApproveCredit, PaySuppliers,
-            ApprovePurchase, RequestPurchase]));
+            ApprovePurchase, RequestPurchase, ManageTreasury]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -71,6 +74,7 @@ public static class ErpPermissions
         RequestPurchase => T("permiso.requestpurchase"),
         ApprovePurchase => T("permiso.approvepurchase"),
         PaySuppliers => T("permiso.paysuppliers"),
+        ManageTreasury => T("permiso.managetreasury"),
         CreateParty => T("permiso.createparty"),
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),

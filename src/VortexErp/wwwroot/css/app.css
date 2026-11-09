@@ -1622,3 +1622,12 @@ table.data td { font-size: 13px; }
 .invoice-row .inv-meta { font-size: 12.5px; color: var(--text-2); }
 .invoice-row .inv-meta.bad-text { color: var(--bad); }
 .invoice-row .inv-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Tesorería */
+.account-card { display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.account-card.on { outline: 2px solid var(--text); outline-offset: -2px; }
+.account-card.off { opacity: .6; }
+.account-card .t1 { display: flex; align-items: center; gap: 6px; }
+.account-balance { font-size: 22px; font-variant-numeric: tabular-nums; }
+.flow-summary { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13.5px; color: var(--text-2); }
+.flow-summary strong { color: var(--text); margin-left: 4px; }
