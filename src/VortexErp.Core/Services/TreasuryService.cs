@@ -191,6 +191,7 @@ public sealed class TreasuryService(ErpDatabase db, IErpContext context, TimePro
         Require(!string.IsNullOrWhiteSpace(description), T("error.movimiento_sin_descripcion"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, on);
             Require((await AccountsAsync(c, tx)).Any(a => a.Id == accountId), T("error.la_cuenta_no_existe"));
             var id = await InsertMovementAsync(c, tx, now, Guid.NewGuid(), accountId, on, amount, kind, description.Trim(), Clean(reference), null);
             await AuditAsync(c, tx, now, "treasury.movement", "treasury_account", accountId, kind, $"{amount:0.00} {description}");
@@ -210,6 +211,7 @@ public sealed class TreasuryService(ErpDatabase db, IErpContext context, TimePro
         Require(fromId != toId, T("error.transferencia_misma_cuenta"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, on);
             var accounts = await AccountsAsync(c, tx);
             var from = accounts.FirstOrDefault(a => a.Id == fromId);
             var to = accounts.FirstOrDefault(a => a.Id == toId);

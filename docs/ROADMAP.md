@@ -69,14 +69,14 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| ERP-45 | Plan de cuentas por país (PCGE, México, Colombia, US GAAP, PGC) | Pendiente | 5 |
-| ERP-46 | Asientos automáticos desde ventas, cobros, compras, pagos, inventario y diferencia de cambio | Pendiente | 5 |
-| ERP-47 | Asientos manuales con aprobación | Pendiente | 5 |
-| ERP-48 | Libro diario, mayor y balance de comprobación | Pendiente | 5 |
-| ERP-49 | Estado de resultados y balance general | Pendiente | 5 |
+| ERP-45 | Plan de cuentas por país (PCGE, México, Colombia, US GAAP, PGC) | Hecho (también Brasil y uno general) | 5a |
+| ERP-46 | Asientos automáticos desde ventas, cobros, compras, pagos, inventario y diferencia de cambio | Parcial: todo menos inventario (fase 6) | 5a |
+| ERP-47 | Asientos manuales con aprobación | Hecho | 5a |
+| ERP-48 | Libro diario, mayor y balance de comprobación | Hecho | 5a |
+| ERP-49 | Estado de resultados y balance general | Hecho | 5a |
 | ERP-50 | Centros de costo | Pendiente | 5 |
-| ERP-51 | Cierre de periodo (bloqueo de fechas), cierre anual y apertura | Pendiente | 5 |
-| ERP-52 | Diferencia de cambio realizada y no realizada | Pendiente | 5 |
+| ERP-51 | Cierre de periodo (bloqueo de fechas), cierre anual y apertura | Parcial: cierre y reapertura de periodo (anual en 5b) | 5a |
+| ERP-52 | Diferencia de cambio realizada y no realizada | Parcial: realizada (no realizada en 5b) | 5a |
 
 ### Costos, activos y presupuestos
 
@@ -263,6 +263,20 @@ dos veces lo mismo.
 
 **Terminado cuando:** un mes con ventas, cobros, compras y pagos cuadra en el balance de comprobación; un periodo
 cerrado no acepta documentos con fecha anterior.
+
+**Estado 5a (2026-11):** hecha; cumple el criterio de terminado. Pantalla Contabilidad. **Plan de cuentas** del país de
+la empresa (PCGE, código agrupador del SAT, PUC, US GAAP, PGC, Brasil o uno general) que se puede ampliar; las cuentas de
+cada **rol** de los asientos automáticos (caja, bancos, por cobrar, por pagar, impuestos, ventas, compras, diferencia de
+cambio…) vienen del plan y se pueden cambiar. **Asientos automáticos** de comprobantes y su anulación, notas de crédito y
+débito, cobros (con la **diferencia de cambio realizada** contra el tipo del comprobante), ventas de caja del POS (con sus
+devoluciones y anulaciones), facturas y pagos de proveedores y movimientos de tesorería (transferencias y depósitos por
+efectivo en tránsito); en moneda de la empresa. No se replican: cada equipo los arma de los documentos con Id
+determinista, así ninguno contabiliza dos veces. **Asientos manuales** cuadrados: el contador los contabiliza; el
+asistente contable (rol nuevo) los deja por aprobar; se corrigen con un asiento que los revierte. **Libro diario, mayor,
+balance de comprobación, estado de resultados y balance general**. **Cierre de periodo**: con fecha de cierre, no se
+registran comprobantes, cobros, notas, compras, pagos, movimientos ni asientos con fecha anterior; reabrir queda en la
+auditoría (ERP-67). Pruebas en `AccountingTests`. Sigue 5b: centros de costo, cierre anual y apertura, diferencia de
+cambio no realizada.
 
 ## Fase 6: costos, activos y presupuestos · M
 

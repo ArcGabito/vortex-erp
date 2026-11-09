@@ -95,6 +95,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `shipment.dispatched` (WMS) | Guarda el despacho con sus líneas; el pedido queda despachado (o despachado en parte con `partial: true`) y cada despacho se puede facturar |
 | `goods.received` (WMS) | Suma lo recibido a la orden de compra y la cierra cuando se completa |
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
+| Contabilidad (fase 5a) | Los asientos automáticos salen de los documentos de cada equipo (no viajan); viajan como `erp.record.upserted` el plan (`ledger_account`), los ajustes contables (`accounting_settings`: roles, cuentas de tesorería, cierre) y los asientos manuales (`journal_entry`) |
 | `cash.deposited` (POS) | El efectivo depositado sale de la caja y entra a la cuenta bancaria predeterminada de la moneda, para conciliarlo con el extracto (Ids deterministas por depósito) |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |

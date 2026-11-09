@@ -1,0 +1,423 @@
+@page "/contabilidad"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("accounting.contabilidad")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("accounting.contabilidad")</h2>
+            <p>@T("accounting.explica")</p>
+        </div>
+        @if (Session.Can(ErpPermissions.ManageAccounting))
+        {
+            <button class="btn btn-dark" @onclick="NewEntry"><Icon Name="plus" Size="18" />@T("accounting.asiento_manual")</button>
+        }
+    </div>
+
+    <div class="filters">
+        <div class="segmented">
+            @foreach (var (tab, label) in Tabs)
+            {
+                <button class="@(_tab == tab ? "on" : "")" @onclick="() => ChangeTabAsync(tab)">@label</button>
+            }
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            @if (_tab is "journal" or "ledger" or "statements")
+            {
+                <input class="control" type="date" style="width:auto" @bind="_from" @bind:after="ReloadAsync" aria-label="@(T("accounting.desde"))" />
+            }
+            @if (_tab != "chart" && _tab != "settings")
+            {
+                <input class="control" type="date" style="width:auto" @bind="_to" @bind:after="ReloadAsync" aria-label="@(T("accounting.hasta"))" />
+            }
+        </div>
+    </div>
+
+    @if (_pending.Count > 0 && Session.Can(ErpPermissions.ApproveEntries))
+    {
+        <div class="card">
+            <div class="card-head"><h3>@T("accounting.por_aprobar", _pending.Count)</h3></div>
+            <div class="card-body">
+                @foreach (var e in _pending)
+                {
+                    <div class="list-row" @key="e.Id">
+                        <span class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@e.Description</span>
+                            <span class="t2">@Fmt.Date(e.Date) · @(e.CreatedBy ?? "—") · @string.Join(", ", e.Lines.Select(l => $"{l.AccountCode} {(l.Debit > 0 ? "D" : "H")} {l.Debit + l.Credit:0.00}"))</span>
+                        </span>
+                        <button class="btn btn-sm btn-dark" @onclick="() => ApproveAsync(e, true)">@T("accounting.aprobar")</button>
+                        <button class="btn btn-sm btn-ghost" @onclick="() => ApproveAsync(e, false)">@T("accounting.rechazar")</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @switch (_tab)
+    {
+        case "trial":
+            <div class="card">
+                <div class="card-body table-wrap">
+                    <table class="table">
+                        <thead><tr><th>@T("accounting.cuenta")</th><th class="num">@T("accounting.debe")</th><th class="num">@T("accounting.haber")</th><th class="num">@T("accounting.saldo")</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _trial)
+                            {
+                                <tr @key="r.Code">
+                                    <td><button class="link-btn" @onclick="() => OpenLedgerAsync(r.Code)">@r.Code</button> @r.Name</td>
+                                    <td class="num">@Money(r.Debit)</td><td class="num">@Money(r.Credit)</td>
+                                    <td class="num">@Money(r.Balance)</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="@(Math.Abs(_trial.Sum(r => r.Debit) - _trial.Sum(r => r.Credit)) < 0.01m ? "" : "bad-text")">
+                                <th>@T("accounting.totales")</th><th class="num">@Money(_trial.Sum(r => r.Debit))</th><th class="num">@Money(_trial.Sum(r => r.Credit))</th><th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            break;
+
+        case "statements" when _income is { } inc && _sheet is { } sheet:
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-head"><h3>@T("accounting.estado_de_resultados")</h3></div>
+                    <div class="card-body">
+                        @Section(inc.Income, T("accounting.ingresos"))
+                        @Section(inc.Expenses, T("accounting.gastos"))
+                        <div class="list-row statement-total"><strong style="flex:1">@T("accounting.resultado")</strong><strong class="@(inc.Result < 0 ? "bad-text" : "")">@Money(inc.Result)</strong></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-head"><h3>@T("accounting.balance_general", Fmt.Date(sheet.AsOf))</h3></div>
+                    <div class="card-body">
+                        @Section(sheet.Assets, T("accounting.activo"))
+                        @Section(sheet.Liabilities, T("accounting.pasivo"))
+                        @Section(sheet.Equity, T("accounting.patrimonio"))
+                        <div class="list-row"><span style="flex:1">@T("accounting.resultado_del_ejercicio")</span><span>@Money(sheet.CurrentResult)</span></div>
+                        <div class="list-row statement-total">
+                            <strong style="flex:1">@T("accounting.pasivo_y_patrimonio")</strong><strong>@Money(sheet.Liabilities.Total + sheet.Equity.Total + sheet.CurrentResult)</strong>
+                        </div>
+                        @if (!sheet.Balanced)
+                        {
+                            <p class="bad-text">@T("accounting.no_cuadra")</p>
+                        }
+                    </div>
+                </div>
+            </div>
+            break;
+
+        case "journal":
+            <div class="card">
+                <div class="card-body">
+                    @if (_journal.Count == 0)
+                    {
+                        <p class="muted" style="margin:0">@T("accounting.sin_asientos")</p>
+                    }
+                    @foreach (var e in _journal)
+                    {
+                        <div class="journal-entry" @key="e.Id">
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <strong style="flex:1">@Fmt.Date(e.Date) · @e.Description</strong>
+                                <span class="muted">@T("accounting.origen." + e.Source)</span>
+                                @if (e.Source == "manual" && Session.Can(ErpPermissions.ApproveEntries) && e.Reverses is null)
+                                {
+                                    <button class="btn btn-sm btn-ghost" @onclick="() => ReverseAsync(e)">@T("accounting.revertir")</button>
+                                }
+                            </div>
+                            @foreach (var l in e.Lines)
+                            {
+                                <div class="journal-line"><span>@l.AccountCode @AccountName(l.AccountCode)</span><span class="num">@(l.Debit > 0 ? Money(l.Debit) : "")</span><span class="num">@(l.Credit > 0 ? Money(l.Credit) : "")</span></div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            break;
+
+        case "ledger":
+            <div class="card">
+                <div class="card-head">
+                    <select class="select" style="width:auto" @bind="_ledgerCode" @bind:after="ReloadAsync">
+                        @foreach (var a in _accounts)
+                        {
+                            <option value="@a.Code">@a.Code · @a.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="card-body table-wrap">
+                    <table class="table">
+                        <thead><tr><th>@T("accounting.fecha")</th><th>@T("accounting.glosa")</th><th class="num">@T("accounting.debe")</th><th class="num">@T("accounting.haber")</th><th class="num">@T("accounting.saldo")</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _ledger)
+                            {
+                                <tr><td>@Fmt.Date(r.Date)</td><td>@r.Description</td><td class="num">@(r.Debit > 0 ? Money(r.Debit) : "")</td><td class="num">@(r.Credit > 0 ? Money(r.Credit) : "")</td><td class="num">@Money(r.Balance)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            break;
+
+        case "chart":
+            <div class="card">
+                <div class="card-head">
+                    <h3>@T("accounting.plan_de_cuentas")</h3>
+                    @if (Session.Can(ErpPermissions.ManageAccounting))
+                    {
+                        <button class="btn btn-sm" @onclick="() => _account = new AccountForm()"><Icon Name="plus" Size="16" />@T("accounting.nueva_cuenta")</button>
+                    }
+                </div>
+                <div class="card-body">
+                    @foreach (var a in _accounts)
+                    {
+                        <div class="list-row" @key="a.Code">
+                            <span class="two-line" style="flex:1"><span class="t1">@a.Code · @a.Name</span><span class="t2">@T("accounting.tipo." + a.Type.ToString().ToLowerInvariant())</span></span>
+                        </div>
+                    }
+                </div>
+            </div>
+            break;
+
+        case "settings":
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-head">
+                        <div><h3>@T("accounting.cuentas_de_los_asientos")</h3><div class="sub">@T("accounting.cuentas_explica")</div></div>
+                        <button class="btn btn-dark btn-sm" disabled="@(!Session.Can(ErpPermissions.ManageAccounting))" @onclick="SaveSettingsAsync">@T("accounting.guardar")</button>
+                    </div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                        @foreach (var role in AccountRoles.All)
+                        {
+                            <div class="field" @key="role">
+                                <label>@T("accounting.rol." + role)</label>
+                                <select class="select" value="@_roles.GetValueOrDefault(role)" @onchange="e => _roles[role] = e.Value?.ToString() ?? string.Empty">
+                                    @foreach (var a in _accounts)
+                                    {
+                                        <option value="@a.Code">@a.Code · @a.Name</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="card" style="align-self:start">
+                    <div class="card-head"><div><h3>@T("accounting.cierre")</h3><div class="sub">@T("accounting.cierre_explica")</div></div></div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                        <p style="margin:0">@(_settings?.ClosedThrough is { } closed ? T("accounting.cerrado_hasta", Fmt.Date(closed)) : T("accounting.sin_cierre"))</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input class="control" type="date" style="width:auto" @bind="_closeDate" />
+                            <button class="btn btn-dark" disabled="@(!Session.Can(ErpPermissions.ManageAccounting))" @onclick="CloseAsync">@T("accounting.cerrar_hasta")</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            break;
+    }
+</div>
+
+@if (_entry is { } en)
+{
+    <Modal Title="@(T("accounting.asiento_manual"))" Subtitle="@(Session.Can(ErpPermissions.ApproveEntries) ? T("accounting.se_contabiliza") : T("accounting.queda_por_aprobar"))" Size="lg" Error="@_error" OnClose="() => _entry = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field" style="max-width:180px"><label>@T("accounting.fecha")</label><input class="control" type="date" @bind="en.Date" /></div>
+                <div class="field"><label>@T("accounting.glosa")</label><input class="control" @bind="en.Description" /></div>
+            </div>
+            @foreach (var l in en.Lines)
+            {
+                <div class="line entry-line" @key="l">
+                    <select class="select" @bind="l.Code" aria-label="@(T("accounting.cuenta"))">
+                        <option value="">@T("accounting.cuenta")</option>
+                        @foreach (var a in _accounts)
+                        {
+                            <option value="@a.Code">@a.Code · @a.Name</option>
+                        }
+                    </select>
+                    <input class="control" type="number" min="0" step="0.01" placeholder="@(T("accounting.debe"))" @bind="l.Debit" />
+                    <input class="control" type="number" min="0" step="0.01" placeholder="@(T("accounting.haber"))" @bind="l.Credit" />
+                    <button class="btn btn-ghost icon-btn sm" @onclick="() => en.Lines.Remove(l)" aria-label="@(T("accounting.quitar"))"><Icon Name="x" Size="16" /></button>
+                </div>
+            }
+            <button class="btn btn-sm" style="align-self:flex-start" @onclick="() => en.Lines.Add(new EntryLine())"><Icon Name="plus" Size="16" />@T("accounting.agregar_linea")</button>
+            <p class="@(en.Lines.Sum(x => x.Debit) == en.Lines.Sum(x => x.Credit) ? "muted" : "bad-text")">@T("accounting.sumas", Money(en.Lines.Sum(x => x.Debit)), Money(en.Lines.Sum(x => x.Credit)))</p>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _entry = null">@T("accounting.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveEntryAsync">@T("accounting.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_account is { } ac)
+{
+    <Modal Title="@(T("accounting.nueva_cuenta"))" Size="sm" Error="@_error" OnClose="() => _account = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field" style="max-width:140px"><label>@T("accounting.codigo")</label><input class="control" @bind="ac.Code" /></div>
+                <div class="field"><label>@T("accounting.nombre")</label><input class="control" @bind="ac.Name" /></div>
+            </div>
+            <div class="field">
+                <label>@T("accounting.tipo")</label>
+                <select class="select" @bind="ac.Type">
+                    @foreach (var t in Enum.GetValues<AccountType>())
+                    {
+                        <option value="@t">@T("accounting.tipo." + t.ToString().ToLowerInvariant())</option>
+                    }
+                </select>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _account = null">@T("accounting.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveAccountAsync">@T("accounting.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private static (string, string)[] Tabs => [("trial", T("accounting.comprobacion")), ("statements", T("accounting.estados")), ("journal", T("accounting.diario")),
+        ("ledger", T("accounting.mayor")), ("chart", T("accounting.plan")), ("settings", T("accounting.ajustes"))];
+
+    private string _tab = "trial";
+    private DateOnly _from = new(DateTime.Today.Year, DateTime.Today.Month, 1), _to = DateOnly.FromDateTime(DateTime.Today), _closeDate = DateOnly.FromDateTime(DateTime.Today);
+    private IReadOnlyList<TrialBalanceRow> _trial = [];
+    private IReadOnlyList<JournalEntry> _journal = [], _pending = [];
+    private IReadOnlyList<LedgerRow> _ledger = [];
+    private IReadOnlyList<LedgerAccount> _accounts = [];
+    private IncomeStatement? _income;
+    private BalanceSheet? _sheet;
+    private AccountingSettings? _settings;
+    private Dictionary<string, string> _roles = [];
+    private string? _ledgerCode, _error;
+    private string _currency = "PEN";
+    private bool _busy;
+    private EntryForm? _entry;
+    private AccountForm? _account;
+
+    private sealed class EntryLine
+    {
+        public string Code { get; set; } = "";
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+
+    private sealed class EntryForm
+    {
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string Description { get; set; } = "";
+        public List<EntryLine> Lines { get; } = [new(), new()];
+    }
+
+    private sealed class AccountForm
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public AccountType Type { get; set; } = AccountType.Expense;
+    }
+
+    private string Money(decimal value) => Fmt.Money(value, _currency);
+    private string AccountName(string code) => _accounts.FirstOrDefault(a => a.Code == code)?.Name ?? "";
+
+    private RenderFragment Section(StatementSection s, string title) => __builder =>
+    {
+        <div class="statement-section">
+            <div class="list-row"><strong style="flex:1">@title</strong><strong>@Money(s.Total)</strong></div>
+            @foreach (var a in s.Accounts)
+            {
+                <div class="list-row statement-account"><span style="flex:1">@a.Code · @a.Name</span><span>@Money(a.Amount)</span></div>
+            }
+        </div>
+    };
+
+    protected override async Task LoadAsync()
+    {
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        _accounts = await Erp.Accounting.GetAccountsAsync();
+        _pending = await Erp.Accounting.GetPendingEntriesAsync();
+        _settings = await Erp.Accounting.GetSettingsAsync();
+        _roles = _settings.Roles.ToDictionary(r => r.Key, r => r.Value);
+        _ledgerCode ??= _accounts.FirstOrDefault()?.Code;
+        switch (_tab)
+        {
+            case "trial":
+                _trial = await Erp.Accounting.GetTrialBalanceAsync(_to);
+                break;
+            case "statements":
+                _income = await Erp.Accounting.GetIncomeStatementAsync(_from, _to);
+                _sheet = await Erp.Accounting.GetBalanceSheetAsync(_to);
+                break;
+            case "journal":
+                _journal = await Erp.Accounting.GetJournalAsync(_from, _to);
+                break;
+            case "ledger" when _ledgerCode is { } code:
+                _ledger = await Erp.Accounting.GetLedgerAsync(code, _from, _to);
+                break;
+        }
+    }
+
+    private async Task ChangeTabAsync(string tab)
+    {
+        _tab = tab;
+        await ReloadAsync();
+    }
+
+    private async Task OpenLedgerAsync(string code)
+    {
+        (_ledgerCode, _tab) = (code, "ledger");
+        await ReloadAsync();
+    }
+
+    private void NewEntry() => (_entry, _error) = (new EntryForm(), null);
+
+    private async Task SaveEntryAsync()
+    {
+        var en = _entry!;
+        _busy = true;
+        _error = await TryAsync(() => Erp.Accounting.CreateEntryAsync(en.Date, en.Description,
+            en.Lines.Select(l => new JournalLine(l.Code, l.Debit, l.Credit)).ToList()), T("accounting.asiento_guardado"));
+        _busy = false;
+        if (_error is null)
+        {
+            _entry = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ApproveAsync(JournalEntry e, bool approve)
+    {
+        await RunAsync(() => Erp.Accounting.ApproveEntryAsync(e.Id, approve), approve ? T("accounting.asiento_aprobado") : T("accounting.asiento_rechazado"));
+        await ReloadAsync();
+    }
+
+    private async Task ReverseAsync(JournalEntry e)
+    {
+        await RunAsync(() => Erp.Accounting.ReverseEntryAsync(e.Id, DateOnly.FromDateTime(DateTime.Today)), T("accounting.asiento_revertido"));
+        await ReloadAsync();
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        await RunAsync(() => Erp.Accounting.SaveSettingsAsync(_roles, _settings?.TreasuryLedger ?? new Dictionary<Guid, string>()), T("accounting.ajustes_guardados"));
+        await ReloadAsync();
+    }
+
+    private async Task CloseAsync()
+    {
+        await RunAsync(() => Erp.Accounting.ClosePeriodAsync(_closeDate), T("accounting.periodo_cerrado", Fmt.Date(_closeDate)));
+        await ReloadAsync();
+    }
+
+    private async Task SaveAccountAsync()
+    {
+        var a = _account!;
+        _error = await TryAsync(() => Erp.Accounting.SaveAccountAsync(new LedgerAccount(a.Code, a.Name, a.Type)), T("accounting.cuenta_guardada"));
+        if (_error is null)
+        {
+            _account = null;
+            await ReloadAsync();
+        }
+    }
+}

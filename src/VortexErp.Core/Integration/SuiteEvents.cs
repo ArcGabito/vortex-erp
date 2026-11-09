@@ -119,6 +119,9 @@ public static class ErpRecordKinds
     public const string TreasuryAccount = "treasury_account";
     public const string TreasuryMovement = "treasury_movement";
     public const string StatementLine = "statement_line";
+    public const string LedgerAccount = "ledger_account";
+    public const string AccountingSettings = "accounting_settings";
+    public const string JournalEntry = "journal_entry";
 }
 
 /// <summary><c>erp.record.upserted</c>: la versión completa de un registro propio del ERP (gana el más nuevo por <c>UpdatedAt</c>).</summary>

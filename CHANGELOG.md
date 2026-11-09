@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Contabilidad (fase 5a):** plan de cuentas por país, asientos automáticos de ventas, notas, cobros (con diferencia de
+  cambio), ventas de caja, compras, pagos y tesorería; asientos manuales con aprobación y reversión; libro diario, mayor,
+  balance de comprobación, estado de resultados y balance general; cierre de periodo que bloquea documentos con fecha
+  anterior. Rol asistente contable.
 - **Tesorería (fase 4b):** cuentas bancarias y cajas con su saldo (los cobros y pagos entran solos a la cuenta de su
   medio de pago), transferencias entre cuentas y monedas, comisiones e intereses, importación de extractos CSV, OFX y
   CAMT.053 con conciliación automática y manual, flujo de caja proyectado por semana y depósitos de las cajas del POS

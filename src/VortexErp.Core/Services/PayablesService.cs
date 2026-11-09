@@ -182,6 +182,7 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
         Require(d.DueOn is null || d.DueOn >= d.IssuedOn, T("error.el_vencimiento_es_anterior"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, d.IssuedOn);
             var supplier = await c.FirstOrDefaultAsync("SELECT name, payment_term_days FROM parties WHERE id = $id AND is_deleted = 0",
                 r => new { Name = r.Str("name"), Days = r.DecOrNull("payment_term_days") }, tx, ("$id", d.SupplierId));
             Require(supplier is not null, T("error.el_proveedor_no_existe"));
@@ -310,6 +311,7 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
         Require(PaymentMethods.All.Contains(method), T("error.medio_de_pago_desconocido"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await AccountingService.RequireOpenPeriodAsync(c, tx, paidOn);
             var inv = await InvoiceAsync(c, tx, invoiceId);
             Require(inv.Status != SupplierInvoiceStatuses.Held, T("error.la_factura_esta_retenida"));
             Require(inv.Status == SupplierInvoiceStatuses.Approved, T("error.la_factura_ya_esta_anulada"));
