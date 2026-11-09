@@ -57,23 +57,29 @@
     }
     else
     {
-        <div class="table-wrap">
-            <table class="data">
-                <thead><tr><th>@T("payables.factura")</th><th>@T("payables.proveedor")</th><th>@T("payables.vence")</th><th class="num">@T("payables.saldo")</th><th>@T("payables.estado")</th></tr></thead>
-                <tbody>
-                    @foreach (var i in _invoices)
-                    {
-                        var (text, tone) = Estado(i);
-                        <tr @key="i.Id" style="cursor:pointer" @onclick="() => OpenAsync(i)">
-                            <td><div class="two-line"><span class="t1">@i.DocumentNumber</span><span class="t2">@Fmt.Date(i.IssuedOn)@(i.PurchaseOrderNumber is { } po ? $" · {po}" : "")</span></div></td>
-                            <td><span style="font-weight:600">@i.SupplierName</span></td>
-                            <td><div class="two-line"><span class="t1 @(Overdue(i) ? "bad-text" : "")">@Fmt.Date(i.DueOn)</span><span class="t2">@(i.PlannedOn is { } p ? T("payables.se_paga_el", Fmt.Date(p)) : "")</span></div></td>
-                            <td class="num strong">@Fmt.Money(i.Balance, i.CurrencyCode)</td>
-                            <td><StatusPill Text="@text" Tone="@tone" /></td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="card-body">
+                @foreach (var i in _invoices)
+                {
+                    var (text, tone) = Estado(i);
+                    <button class="list-row invoice-row" @key="i.Id" @onclick="() => OpenAsync(i)">
+                        <span class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@i.DocumentNumber</span>
+                            <span class="t2" style="color:var(--text);font-weight:600">@i.SupplierName</span>
+                            <span class="t2">
+                                @T("payables.emitida_el", Fmt.Date(i.IssuedOn))@(i.PurchaseOrderNumber is { } po ? $" · {po}" : "")
+                            </span>
+                            <span class="t2 @(Overdue(i) ? "bad-text" : "")">
+                                @T("payables.vence_el", Fmt.Date(i.DueOn))@(i.PlannedOn is { } p ? $" · {T("payables.se_paga_el", Fmt.Date(p))}" : "")
+                            </span>
+                        </span>
+                        <span class="invoice-end">
+                            <strong>@Fmt.Money(i.Balance, i.CurrencyCode)</strong>
+                            <StatusPill Text="@text" Tone="@tone" />
+                        </span>
+                    </button>
+                }
+            </div>
         </div>
     }
 </div>

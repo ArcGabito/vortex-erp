@@ -607,6 +607,7 @@
   "payables.de_la_orden": "from order {0}",
   "payables.elige_el_proveedor": "Choose the supplier",
   "payables.emitida": "Issued",
+  "payables.emitida_el": "Issued {0}",
   "payables.estado": "Status",
   "payables.explica": "Supplier invoices, matched against the order and what was received, and their payments.",
   "payables.factura": "Invoice",

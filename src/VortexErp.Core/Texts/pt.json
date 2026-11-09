@@ -607,6 +607,7 @@
   "payables.de_la_orden": "da ordem {0}",
   "payables.elige_el_proveedor": "Escolha o fornecedor",
   "payables.emitida": "Emitida",
+  "payables.emitida_el": "Emitida em {0}",
   "payables.estado": "Situação",
   "payables.explica": "Faturas de fornecedores, conciliadas com a ordem e o recebido, e seus pagamentos.",
   "payables.factura": "Fatura",
