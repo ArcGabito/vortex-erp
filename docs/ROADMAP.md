@@ -27,7 +27,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-04 | Notas de crédito (devolución, descuento, anulación) y de débito | Hecho | 2 |
 | ERP-05 | Anulación de comprobantes con motivo, replicada | Hecho | 2 |
 | ERP-06 | Comprobantes en cualquier moneda con el tipo de cambio del hub | Hecho | 2 |
-| ERP-07 | Listas de precios y descuentos por cliente | Parcial: descuento habitual por cliente | 3a |
+| ERP-07 | Listas de precios y descuentos por cliente | Hecho | 3c |
 | ERP-08 | Condiciones de pago y límite de crédito con bloqueo y aprobación | Hecho | 3a |
 | ERP-09 | Facturación de despachos parciales | Hecho | 3b |
 | ERP-10 | Facturación recurrente (suscripciones, alquileres) | Pendiente | 3 |
@@ -197,6 +197,15 @@ de cobranza desde Cobranzas: mensaje armado con los comprobantes vencidos (núme
 abre en WhatsApp o en el correo y queda registrado (último recordatorio por cliente y auditoría). Pruebas en
 `ShipmentsTests`. Quedan para la 3c: anticipos (ERP-19), facturación recurrente (ERP-10) y listas de precios compartidas
 (ERP-07, con el hub).
+
+**Estado 3c, listas de precios (2026-11):** hecha la parte de ERP-07. Las listas viven en el hub (`price_list`,
+vortex-api#36) y las comparten POS, ERP y CRM; el ERP las crea y edita (pantalla Listas de precios: moneda, vigencia,
+sedes donde rigen por defecto y escalas por cantidad; se suben enteras) y asigna la de cada cliente en sus condiciones
+comerciales (`credit.priceListId`). En el pedido, sin precio escrito: la lista del cliente si está vigente, si no la de
+la sede, con la escala de lo que se pide del artículo y convertida a la moneda del pedido; lo que no está en la lista va
+al precio del artículo con el descuento habitual (no se suman). La pantalla usa el mismo cálculo de Core (`PriceBook`) y
+recalcula la escala al cambiar la cantidad mientras el precio no se edite a mano. Pruebas en `PriceListsTests`. Siguen
+pendientes anticipos (ERP-19) y facturación recurrente (ERP-10).
 
 ## Fase 4: compras, cuentas por pagar y tesorería · L
 

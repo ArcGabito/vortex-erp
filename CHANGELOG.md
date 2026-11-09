@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Listas de precios (ERP-07):** pantalla para crear y editar las listas del hub (`price_list`: moneda, vigencia, sedes y
+  escalas por cantidad) y lista de cada cliente en sus condiciones comerciales. Los pedidos toman el precio de la lista
+  del cliente o de la sede (con la escala de la cantidad); lo que no está en la lista lleva el descuento habitual.
 - **Despachos parciales y cobranza (fase 3b):** cada despacho del WMS queda en el pedido con lo que salió y se factura
   por separado (`invoice.issued` con `shipmentId`); recordatorio de cobranza con los comprobantes vencidos, listo para
   WhatsApp o correo, que queda registrado.

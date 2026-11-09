@@ -33,6 +33,7 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnParties((c, ct) => master.ApplyPartyAsync(c, ct))
         .OnCompany((c, ct) => master.ApplyCompanyAsync(c, ct))
         .OnExchangeRates((c, ct) => master.ApplyExchangeRateAsync(c, ct))
+        .OnPriceLists((c, ct) => master.ApplyPriceListAsync(c, ct))
         .OnEvent(SuiteEvents.OrderCreated, HandleOrderCreatedAsync)
         .OnEvent(SuiteEvents.OrderApproved, HandleOrderApprovedAsync)
         .OnEvent(SuiteEvents.QuoteAccepted, HandleQuoteAcceptedAsync)

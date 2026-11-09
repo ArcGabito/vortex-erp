@@ -230,5 +230,19 @@ internal static class Schema
             user_name TEXT);
         CREATE INDEX ix_collection_reminders_customer ON collection_reminders (customer_id, sent_at);
         """,
+        // 7: listas de precios (ERP-07). Copia de las listas del hub (price_list) con sus escalas (pending: cambiada aquí y
+        // aún no confirmada por el feed) y la lista de cada cliente (credit.priceListId). Se vuelve a leer el feed para
+        // traer la lista de los clientes que ya estaban.
+        """
+        CREATE TABLE price_lists (
+            id TEXT PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL, currency_code TEXT NOT NULL, valid_from TEXT, valid_to TEXT,
+            site_ids TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL, is_deleted INTEGER NOT NULL DEFAULT 0,
+            version INTEGER NOT NULL, pending INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+        CREATE TABLE price_list_lines (
+            list_id TEXT NOT NULL, item_id TEXT NOT NULL, min_qty REAL NOT NULL, price REAL NOT NULL,
+            PRIMARY KEY (list_id, item_id, min_qty));
+        ALTER TABLE parties ADD COLUMN price_list_id TEXT;
+        DELETE FROM sync_cursors WHERE stream = 'master';
+        """,
     ];
 }

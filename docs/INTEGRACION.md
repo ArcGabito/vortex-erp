@@ -17,6 +17,7 @@ Este documento resume qué hace el ERP con cada dato y evento, y cómo conviven 
 | Sedes | Almacén de despacho de pedidos y de recepción de compras | Alta |
 | Clientes y proveedores | Pedidos, comprobantes (factura solo con RUC), compras | Alta |
 | Empresa | Moneda | No |
+| Listas de precios | Precio de los pedidos: la lista del cliente (`credit.priceListId`) o de la sede (`siteIds`), con escalas | Sí (se suben enteras) |
 
 La copia local solo se actualiza desde el feed, por `id` y `version`; un alta queda **POR ENVIAR** hasta que vuelve.
 
