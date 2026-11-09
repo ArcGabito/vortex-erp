@@ -1,0 +1,246 @@
+@page "/listas-de-precios"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("pricelists.listas_de_precios")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("pricelists.listas_de_precios")</h2>
+            <p>@T("pricelists.explica")</p>
+        </div>
+        @if (Session.Can(ErpPermissions.EditCatalog))
+        {
+            <button class="btn btn-dark" @onclick="() => OpenAsync(null)"><Icon Name="plus" Size="18" />@T("pricelists.nueva")</button>
+        }
+    </div>
+
+    @if (_lists.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="list" Title="@(T("pricelists.sin_listas"))" Text="@(T("pricelists.sin_listas_explica"))" />
+    }
+    else
+    {
+        <div class="grid-cards">
+            @foreach (var l in _lists)
+            {
+                <div class="card site-card" @key="l.Id">
+                    <div class="top">
+                        <div class="stat-icon"><Icon Name="list" Size="20" /></div>
+                        <div class="two-line" style="flex:1">
+                            <span class="t1">@l.Name</span>
+                            <span class="t2">@l.Code · @l.CurrencyCode@(Vigencia(l) is { } v ? $" · {v}" : "")</span>
+                        </div>
+                        @if (!l.IsActive)
+                        {
+                            <StatusPill Text="@(T("pricelists.inactiva"))" Tone="neutral" />
+                        }
+                    </div>
+                    <div class="figures">
+                        <div><strong>@l.Items</strong><span>@T("pricelists.articulos")</span></div>
+                        <div><strong>@l.Customers</strong><span>@T("pricelists.clientes")</span></div>
+                    </div>
+                    <div class="muted" style="font-size:12.5px;display:flex;gap:6px;align-items:center;min-height:18px;flex-wrap:wrap">
+                        @if (l.SiteIds.Count > 0)
+                        {
+                            <Icon Name="store" Size="15" />
+                            <span>@string.Join(", ", l.SiteIds.Select(s => _sites.FirstOrDefault(x => x.Id == s)?.Name ?? "?"))</span>
+                        }
+                        @if (l.Pending)
+                        {
+                            <span class="tag" title="@(T("pricelists.por_enviar_explica"))">@T("pricelists.por_enviar")</span>
+                        }
+                    </div>
+                    @if (Session.Can(ErpPermissions.EditCatalog))
+                    {
+                        <hr class="divider" />
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button class="btn btn-sm" @onclick="() => OpenAsync(l)"><Icon Name="edit" Size="16" />@T("pricelists.editar")</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_form is { } f)
+{
+    <Modal Title="@(_editId is null ? T("pricelists.nueva") : f.Name)" Subtitle="@(T("pricelists.se_comparte"))" Size="lg" Error="@_error" OnClose="() => _form = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field"><label>@T("pricelists.codigo")</label><input class="control" placeholder="MAYORISTA" @bind="f.Code" /></div>
+                <div class="field"><label>@T("pricelists.nombre")</label><input class="control" @bind="f.Name" /></div>
+            </div>
+            <div class="form-row three">
+                <div class="field">
+                    <label>@T("pricelists.moneda")</label>
+                    <select class="select" @bind="f.Currency">
+                        @foreach (var cur in _currencies)
+                        {
+                            <option value="@cur">@cur</option>
+                        }
+                    </select>
+                </div>
+                <div class="field"><label>@T("pricelists.desde")</label><input class="control" type="date" @bind="f.From" /></div>
+                <div class="field"><label>@T("pricelists.hasta")</label><input class="control" type="date" @bind="f.To" /></div>
+            </div>
+            <div class="field">
+                <label>@T("pricelists.sedes")</label>
+                <div class="chips-select">
+                    @foreach (var s in _sites.Where(s => s.IsActive))
+                    {
+                        <label class="check-row"><input type="checkbox" checked="@f.Sites.Contains(s.Id)" @onchange="e => Toggle(f, s.Id, e.Value is true)" /><span>@s.Name</span></label>
+                    }
+                </div>
+                <span class="hint">@T("pricelists.sedes_explica")</span>
+            </div>
+
+            <div class="field">
+                <label>@T("pricelists.precios")</label>
+                <ItemPicker OnSelected="i => Add(f, i)" />
+            </div>
+            @if (f.Lines.Count > 0)
+            {
+                <div class="pl-lines">
+                    <div class="pl-line pl-head">
+                        <span class="field-label">@T("pricelists.articulo")</span>
+                        <span class="field-label">@T("pricelists.desde_cantidad")</span>
+                        <span class="field-label">@T("pricelists.precio")</span>
+                        <span></span>
+                    </div>
+                    @for (var i = 0; i < f.Lines.Count; i++)
+                    {
+                        var line = f.Lines[i];
+                        var escala = i > 0 && f.Lines[i - 1].Item.Id == line.Item.Id;
+                        <div class="pl-line @(escala ? "step" : "")" @key="line">
+                            @if (escala)
+                            {
+                                <span class="muted pl-step">@T("pricelists.escala")</span>
+                            }
+                            else
+                            {
+                                <div class="two-line">
+                                    <span class="t1">@line.Item.Name</span>
+                                    <span class="t2">#@line.Item.Sku · @T("pricelists.precio_del_articulo", Fmt.Money(line.Item.Price, line.Item.CurrencyCode))</span>
+                                </div>
+                            }
+                            <input class="control" type="number" inputmode="decimal" min="1" step="any" @bind="line.Min" aria-label="@(T("pricelists.desde_cantidad"))" />
+                            <input class="control" type="number" inputmode="decimal" min="0" step="0.01" @bind="line.Price" aria-label="@(T("pricelists.precio"))" />
+                            <div style="display:flex;gap:2px">
+                                <button class="btn btn-ghost icon-btn sm" title="@(T("pricelists.agregar_escala"))" @onclick="() => AddStep(f, line)"><Icon Name="plus" Size="16" /></button>
+                                <button class="btn btn-ghost icon-btn sm" title="@(T("pricelists.quitar"))" @onclick="() => f.Lines.Remove(line)"><Icon Name="x" Size="16" /></button>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <span class="hint">@T("pricelists.escalas_explica")</span>
+            }
+            @if (_editId is not null)
+            {
+                <label class="check-row"><input type="checkbox" @bind="f.Active" /><span>@T("pricelists.activa")</span></label>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _form = null">@T("pricelists.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">@T("pricelists.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<PriceListRow> _lists = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private List<string> _currencies = [];
+    private Form? _form;
+    private Guid? _editId;
+    private string? _error;
+    private bool _busy;
+
+    private sealed class Form
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Currency { get; set; } = "PEN";
+        public DateOnly? From { get; set; }
+        public DateOnly? To { get; set; }
+        public List<Guid> Sites { get; } = [];
+        public bool Active { get; set; } = true;
+        public List<Line> Lines { get; } = [];
+    }
+
+    private sealed class Line
+    {
+        public required ItemRow Item { get; init; }
+        public decimal Min { get; set; } = 1;
+        public decimal Price { get; set; }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _lists = await Erp.PriceLists.GetListsAsync();
+        _sites = await Erp.Master.GetSitesAsync();
+    }
+
+    private async Task OpenAsync(PriceListRow? row)
+    {
+        _error = null;
+        var company = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        _currencies = new[] { company, "PEN", "USD", "EUR" }.Concat((await Erp.Master.GetLatestExchangeRatesAsync()).SelectMany(r => new[] { r.From, r.To }))
+            .Distinct().ToList();
+        _editId = row?.Id;
+        var f = new Form { Currency = company };
+        if (row is not null && await Erp.PriceLists.GetAsync(row.Id) is { } d)
+        {
+            (f.Code, f.Name, f.Currency, f.From, f.To, f.Active) = (d.Code, d.Name, d.CurrencyCode, d.ValidFrom, d.ValidTo, d.IsActive);
+            f.Sites.AddRange(d.SiteIds);
+            foreach (var l in d.Lines)
+                if (await Erp.Master.GetItemAsync(l.ItemId) is { } item)
+                    f.Lines.Add(new Line { Item = item, Min = l.MinQuantity, Price = l.Price });
+        }
+        _form = f;
+    }
+
+    private static void Toggle(Form f, Guid site, bool on)
+    {
+        f.Sites.Remove(site);
+        if (on)
+            f.Sites.Add(site);
+    }
+
+    /// <summary>Un artículo nuevo entra con su precio; si ya está, se agrega una escala.</summary>
+    private static void Add(Form f, ItemRow item)
+    {
+        if (f.Lines.LastOrDefault(l => l.Item.Id == item.Id) is { } last)
+            AddStep(f, last);
+        else
+            f.Lines.Add(new Line { Item = item, Price = item.Price });
+    }
+
+    private static void AddStep(Form f, Line from) =>
+        f.Lines.Insert(f.Lines.IndexOf(from) + 1, new Line { Item = from.Item, Min = Math.Max(from.Min * 2, from.Min + 1), Price = from.Price });
+
+    private async Task SaveAsync()
+    {
+        if (_form is not { } f)
+            return;
+        _busy = true;
+        var draft = new PriceListDraft(f.Code, f.Name, f.Currency, f.From, f.To, f.Sites, f.Active,
+            f.Lines.Select(l => new PriceListLineRow(l.Item.Id, l.Price, l.Min)).ToList());
+        _error = await TryAsync(() => Erp.PriceLists.SaveAsync(_editId, draft), T("pricelists.guardada", f.Name));
+        _busy = false;
+        if (_error is null)
+        {
+            _form = null;
+            await ReloadAsync();
+        }
+    }
+
+    private static string? Vigencia(PriceListRow l) => (l.ValidFrom, l.ValidTo) switch
+    {
+        (null, null) => null,
+        ({ } a, null) => T("pricelists.desde_fecha", Fmt.Date(a)),
+        (null, { } b) => T("pricelists.hasta_fecha", Fmt.Date(b)),
+        ({ } a, { } b) => $"{Fmt.Date(a)} – {Fmt.Date(b)}",
+    };
+}

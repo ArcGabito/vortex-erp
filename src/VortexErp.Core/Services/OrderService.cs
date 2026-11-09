@@ -244,16 +244,18 @@ public sealed class OrderService(ErpDatabase db, IErpContext context, TimeProvid
         var site = siteId ?? await DefaultSiteAsync(c, tx);
         Require(site is null || CanUseSite(site.Value), T("error.sede_no_asignada"));
 
-        var terms = (await c.QueryAsync("SELECT payment_term_days, credit_limit, discount_percent FROM parties WHERE id = $id",
+        var terms = (await c.QueryAsync("SELECT payment_term_days, credit_limit, discount_percent, price_list_id FROM parties WHERE id = $id",
             MasterDataService.ReadTerms, tx, ("$id", customerId))).Single();
-        var money = VortexApi.Suite.Money.Currencies.Get(currencyCode);
+        var book = await PriceListService.LoadAsync(c, tx, now, customerId, site, currencyCode);
         var orderLines = new List<OrderLine>();
         foreach (var l in lines)
         {
-            // Sin precio escrito se usa el de lista con el descuento habitual del cliente.
+            // Sin precio escrito: el de la lista del cliente o de la sede (con la escala de lo que se pide del artículo) o
+            // el del artículo con el descuento habitual del cliente.
             var price = l.UnitPrice;
-            if (price is null && await ListPriceAsync(c, tx, l.ItemId, currencyCode, now) is { } list)
-                price = money.Round(list * (1 - terms.DiscountPercent / 100m));
+            if (price is null)
+                price = book.ListPrice(l.ItemId, lines.Where(x => x.ItemId == l.ItemId).Sum(x => x.Quantity))
+                        ?? book.PriceFor(l.ItemId, l.Quantity, await ListPriceAsync(c, tx, l.ItemId, currencyCode, now));
             Require(price is not null, T("error.uno_de_los_articulos_ya"));
             orderLines.Add(new OrderLine(l.ItemId, l.Quantity, price!.Value));
         }

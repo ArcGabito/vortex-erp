@@ -140,12 +140,24 @@
                     <label>@T("partners.descuento_habitual")</label>
                     <input class="control" type="number" inputmode="decimal" min="0" max="100" step="0.5" @bind="_discount" />
                 </div>
+                <div class="field">
+                    <label>@T("partners.lista_de_precios")</label>
+                    <select class="select" @bind="_priceList">
+                        <option value="">@T("partners.sin_lista")</option>
+                        @foreach (var l in _lists.Where(l => l.IsActive || l.Id.ToString() == _priceList))
+                        {
+                            <option value="@l.Id">@l.Name · @l.CurrencyCode</option>
+                        }
+                    </select>
+                    <span class="hint">@T("partners.lista_explica")</span>
+                </div>
             }
             else
             {
                 <dl class="totals">
                     <dt>@T("partners.plazo_de_pago")</dt><dd>@(cr.Terms.PaymentTermDays is { } d ? T("partners.n_dias", d) : T("partners.sin_definir"))</dd>
                     <dt>@T("partners.descuento_habitual")</dt><dd>@cr.Terms.DiscountPercent.ToString("0.##") %</dd>
+                    <dt>@T("partners.lista_de_precios")</dt><dd>@(_lists.FirstOrDefault(l => l.Id == cr.Terms.PriceListId)?.Name ?? T("partners.sin_lista"))</dd>
                 </dl>
             }
         </ChildContent>
@@ -240,6 +252,8 @@
     private int? _termDays;
     private decimal? _limit;
     private decimal _discount;
+    private string? _priceList;
+    private IReadOnlyList<PriceListRow> _lists = [];
     private string? _error;
     private bool _busy;
 
@@ -249,6 +263,8 @@
             return;
         _error = null;
         (_termDays, _limit, _discount) = (credit.Terms.PaymentTermDays, credit.Terms.CreditLimit, credit.Terms.DiscountPercent);
+        _priceList = credit.Terms.PriceListId?.ToString();
+        _lists = await Erp.PriceLists.GetListsAsync();
         _credit = credit;
     }
 
@@ -257,7 +273,8 @@
         if (_credit is not { } credit)
             return;
         _busy = true;
-        _error = await TryAsync(() => Erp.Master.SaveCreditTermsAsync(credit.CustomerId, new CreditTerms(_termDays, _limit, _discount)),
+        _error = await TryAsync(() => Erp.Master.SaveCreditTermsAsync(credit.CustomerId, new CreditTerms(_termDays, _limit, _discount,
+            Guid.TryParse(_priceList, out var list) ? list : null)),
             T("partners.credito_guardado", credit.Name));
         _busy = false;
         if (_error is null)

@@ -150,7 +150,7 @@
                 }
                 <div class="field">
                     <label>@T("orders.despachar_desde")</label>
-                    <select class="select" @bind="n.SiteId">
+                    <select class="select" @bind="n.SiteId" @bind:after="() => RepriceAsync(n)">
                         <option value="">@T("orders.sede_por_defecto")</option>
                         @foreach (var s in _sites)
                         {
@@ -183,7 +183,12 @@
                     <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.supera_el_limite")</span></div>
                 }
             }
-            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => PriceFor(n, i)" Changed="StateHasChanged" />
+            @if (n.Book?.ListName is { } lista)
+            {
+                <span class="hint price-list-hint"><Icon Name="list" Size="13" />@T("orders.precios_de_la_lista", lista)</span>
+            }
+            <LineEditor Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => PriceFor(n, i, 1)"
+                        PriceForQuantity="(i, q) => PriceFor(n, i, q)" Changed="StateHasChanged" />
             <dl class="totals">
                 <dt class="grand">@T("orders.total")</dt><dd class="grand">@Fmt.Money(n.Lines.Sum(l => Tax.Round(l.Quantity * (l.Price ?? 0))), n.Currency)</dd>
             </dl>
@@ -305,6 +310,7 @@
         public Guid? SiteId { get; set; }
         public string Currency { get; set; } = "PEN";
         public CustomerCredit? Credit { get; set; }
+        public PriceBook? Book { get; set; }
         public List<LineEditor.LineDraft> Lines { get; } = [];
     }
 
@@ -361,6 +367,7 @@
         _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
         _rates = await ForeignRatesAsync();
         _new = new NewOrder { SiteId = Session.DefaultSiteId, Currency = _currency };
+        await RepriceAsync(_new);
     }
 
     /// <summary>Monedas con tipo de cambio del hub hacia la de la empresa: cuánto vale 1 unidad en la moneda de la empresa.</summary>
@@ -388,29 +395,40 @@
             ? VortexApi.Suite.Money.Currencies.Get(currency).Round(item.Price * from / to) : null;
     }
 
-    /// <summary>Precio de lista en la moneda del pedido, con el descuento habitual del cliente.</summary>
-    private decimal? PriceFor(NewOrder n, ItemRow item)
+    /// <summary>
+    /// Precio sugerido (el mismo que pone Core): la lista del cliente o de la sede, con la escala de la cantidad; si el
+    /// artículo no está en la lista, su precio en la moneda del pedido con el descuento habitual del cliente.
+    /// </summary>
+    private decimal? PriceFor(NewOrder n, ItemRow item, decimal quantity)
     {
-        var list = PriceIn(item, n.Currency);
+        var itemPrice = PriceIn(item, n.Currency);
+        if (n.Book is { } book)
+            return book.PriceFor(item.Id, quantity, itemPrice);
         var discount = n.Credit?.Terms.DiscountPercent ?? 0;
-        return list is { } price && discount > 0 ? VortexApi.Suite.Money.Currencies.Get(n.Currency).Round(price * (1 - discount / 100m)) : list;
+        return itemPrice is { } price && discount > 0 ? VortexApi.Suite.Money.Currencies.Get(n.Currency).Round(price * (1 - discount / 100m)) : itemPrice;
     }
 
-    /// <summary>Cambia la moneda del pedido y recalcula los precios de lista de las líneas.</summary>
-    private void ChangeCurrency(NewOrder n, string? currency)
+    /// <summary>Vuelve a calcular la lista que rige y los precios que no se escribieron a mano.</summary>
+    private async Task RepriceAsync(NewOrder n)
+    {
+        n.Book = await Erp.PriceLists.PriceBookAsync(n.CustomerId, n.SiteId ?? Session.DefaultSiteId, n.Currency);
+        foreach (var l in n.Lines.Where(l => !l.PriceEdited))
+            l.Price = PriceFor(n, l.Item, l.Quantity);
+    }
+
+    /// <summary>Cambia la moneda del pedido y recalcula los precios de las líneas.</summary>
+    private async Task ChangeCurrency(NewOrder n, string? currency)
     {
         n.Currency = currency ?? n.Currency;
-        foreach (var l in n.Lines)
-            l.Price = PriceFor(n, l.Item);
+        await RepriceAsync(n);
     }
 
-    /// <summary>Al elegir el cliente se muestran su crédito y su plazo, y los precios toman su descuento.</summary>
+    /// <summary>Al elegir el cliente se muestran su crédito y su plazo, y los precios toman su lista o su descuento.</summary>
     private async Task ChangeCustomerAsync(NewOrder n, string? value)
     {
         n.CustomerId = Guid.TryParse(value, out var id) ? id : null;
         n.Credit = n.CustomerId is { } customer ? await Erp.Master.GetCreditAsync(customer) : null;
-        foreach (var l in n.Lines)
-            l.Price = PriceFor(n, l.Item);
+        await RepriceAsync(n);
     }
 
     private async Task CreateAsync()

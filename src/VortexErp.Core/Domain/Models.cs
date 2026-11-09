@@ -87,7 +87,8 @@ public static class OrderApprovals
 }
 
 /// <summary>Condiciones comerciales del cliente (del party del hub). Límite en la moneda de la empresa; null = sin límite.</summary>
-public sealed record CreditTerms(int? PaymentTermDays, decimal? CreditLimit, decimal DiscountPercent);
+/// <param name="PriceListId">Lista de precios del cliente (del hub); gana a la de la sede y al precio del artículo.</param>
+public sealed record CreditTerms(int? PaymentTermDays, decimal? CreditLimit, decimal DiscountPercent, Guid? PriceListId = null);
 
 /// <summary>Crédito del cliente hoy, en la moneda de la empresa: lo que debe más los pedidos abiertos sin facturar.</summary>
 public sealed record CustomerCredit(Guid CustomerId, string Name, CreditTerms Terms, string CompanyCurrency, decimal Exposure, decimal Overdue)
@@ -397,4 +398,41 @@ public sealed record ExchangeRateRow(DateOnly Date, string From, string To, deci
 public sealed record FxSummary(string CurrencyCode, decimal Gains, decimal Losses, int Payments)
 {
     public decimal Net => Gains - Losses;
+}
+
+// ---------- Listas de precios (ERP-07) ----------
+
+public sealed record PriceListRow(Guid Id, string Code, string Name, string CurrencyCode, DateOnly? ValidFrom, DateOnly? ValidTo,
+    IReadOnlyList<Guid> SiteIds, bool IsActive, bool Pending, int Items, int Customers);
+
+/// <summary>Precio de un artículo desde una cantidad (escala).</summary>
+public sealed record PriceListLineRow(Guid ItemId, decimal Price, decimal MinQuantity = 1);
+
+public sealed record PriceListDraft(string Code, string Name, string CurrencyCode, DateOnly? ValidFrom, DateOnly? ValidTo,
+    IReadOnlyList<Guid> SiteIds, bool IsActive, IReadOnlyList<PriceListLineRow> Lines);
+
+/// <summary>
+/// Cómo se pone precio a un pedido: la lista que rige (del cliente o de la sede, ya en la moneda del pedido) y el descuento
+/// habitual del cliente. Un artículo de la lista va a su precio (por escala); uno que no está, al precio del artículo con
+/// el descuento habitual (el descuento no se suma a la lista).
+/// </summary>
+public sealed class PriceBook(Guid? listId, string? listName, string currency, decimal discountPercent, decimal rate,
+    IReadOnlyDictionary<Guid, IReadOnlyList<(decimal Min, decimal Price)>> lines)
+{
+    public Guid? ListId { get; } = listId;
+    public string? ListName { get; } = listName;
+    public string Currency { get; } = currency;
+    public decimal DiscountPercent { get; } = discountPercent;
+
+    /// <summary>Precio de la lista para esa cantidad (las fracciones toman la escala "desde 1"), o null si no está.</summary>
+    public decimal? ListPrice(Guid itemId, decimal quantity) =>
+        lines.TryGetValue(itemId, out var steps) && steps.LastOrDefault(s => s.Min <= Math.Max(quantity, 1)) is { Min: > 0 } step
+            ? VortexApi.Suite.Money.Currencies.Get(Currency).Round(step.Price * rate)
+            : null;
+
+    /// <summary>Precio sugerido: el de la lista o, si no está, <paramref name="itemPrice"/> (ya en la moneda) con el descuento.</summary>
+    public decimal? PriceFor(Guid itemId, decimal quantity, decimal? itemPrice) =>
+        ListPrice(itemId, quantity) ?? (itemPrice is { } price
+            ? DiscountPercent > 0 ? VortexApi.Suite.Money.Currencies.Get(Currency).Round(price * (1 - DiscountPercent / 100m)) : price
+            : null);
 }
