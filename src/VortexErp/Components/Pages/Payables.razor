@@ -62,20 +62,18 @@
                 @foreach (var i in _invoices)
                 {
                     var (text, tone) = Estado(i);
-                    <button class="list-row invoice-row" @key="i.Id" @onclick="() => OpenAsync(i)">
-                        <span class="two-line" style="flex:1;min-width:0">
-                            <span class="t1">@i.DocumentNumber</span>
-                            <span class="t2" style="color:var(--text);font-weight:600">@i.SupplierName</span>
-                            <span class="t2">
-                                @T("payables.emitida_el", Fmt.Date(i.IssuedOn))@(i.PurchaseOrderNumber is { } po ? $" · {po}" : "")
-                            </span>
-                            <span class="t2 @(Overdue(i) ? "bad-text" : "")">
-                                @T("payables.vence_el", Fmt.Date(i.DueOn))@(i.PlannedOn is { } p ? $" · {T("payables.se_paga_el", Fmt.Date(p))}" : "")
-                            </span>
+                    <button class="invoice-row" @key="i.Id" @onclick="() => OpenAsync(i)">
+                        <span class="inv-top">
+                            <span class="inv-number">@i.DocumentNumber</span>
+                            <strong class="inv-amount">@Fmt.Money(i.Balance, i.CurrencyCode)</strong>
                         </span>
-                        <span class="invoice-end">
-                            <strong>@Fmt.Money(i.Balance, i.CurrencyCode)</strong>
+                        <span class="inv-supplier">@i.SupplierName</span>
+                        <span class="inv-meta @(Overdue(i) ? "bad-text" : "")">
+                            @T("payables.vence_el", Fmt.Date(i.DueOn))@(i.PurchaseOrderNumber is { } po ? $" · {po}" : "")@(i.PlannedOn is { } p ? $" · {T("payables.se_paga_el", Fmt.Date(p))}" : "")
+                        </span>
+                        <span class="inv-foot">
                             <StatusPill Text="@text" Tone="@tone" />
+                            <span class="inv-meta">@T("payables.emitida_el", Fmt.Date(i.IssuedOn))</span>
                         </span>
                     </button>
                 }
