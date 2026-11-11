@@ -74,9 +74,9 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-47 | Asientos manuales con aprobación | Hecho | 5a |
 | ERP-48 | Libro diario, mayor y balance de comprobación | Hecho | 5a |
 | ERP-49 | Estado de resultados y balance general | Hecho | 5a |
-| ERP-50 | Centros de costo | Pendiente | 5 |
-| ERP-51 | Cierre de periodo (bloqueo de fechas), cierre anual y apertura | Parcial: cierre y reapertura de periodo (anual en 5b) | 5a |
-| ERP-52 | Diferencia de cambio realizada y no realizada | Parcial: realizada (no realizada en 5b) | 5a |
+| ERP-50 | Centros de costo | Hecho | 5b |
+| ERP-51 | Cierre de periodo (bloqueo de fechas), cierre anual y apertura | Hecho | 5a-5b |
+| ERP-52 | Diferencia de cambio realizada y no realizada | Hecho | 5a-5b |
 
 ### Costos, activos y presupuestos
 
@@ -277,6 +277,16 @@ balance de comprobación, estado de resultados y balance general**. **Cierre de 
 registran comprobantes, cobros, notas, compras, pagos, movimientos ni asientos con fecha anterior; reabrir queda en la
 auditoría (ERP-67). Pruebas en `AccountingTests`. Sigue 5b: centros de costo, cierre anual y apertura, diferencia de
 cambio no realizada.
+
+**Estado 5b (2026-11):** hecha; fase 5 terminada. **Centros de costo** (registro del ERP): cada línea de asiento puede
+llevar el suyo; en los manuales lo elige el contador y en los automáticos sale de la sede (ventas de caja y sus
+devoluciones, comprobantes y notas de pedidos con sede). Resultado por centro y estado de resultados filtrado por centro.
+**Cierre anual**: un asiento al 31 de diciembre salda ingresos y gastos contra utilidades acumuladas (Id fijo por año: se
+recalcula si se vuelve a cerrar) y cierra el periodo; el estado de resultados no lo cuenta. **Apertura**: el diario del 1
+de enero muestra el asiento de apertura con los saldos al cierre. **Diferencia de cambio no realizada**: revalúa al tipo
+de una fecha los comprobantes por cobrar y las facturas de proveedor pendientes en otra moneda (vista previa y
+contabilización) y se revierte al día siguiente. Además, una venta de caja con comprobante electrónico del POS (fase 5a
+del POS) no se vuelve a facturar. Pruebas en `AccountingCloseTests`.
 
 ## Fase 6: costos, activos y presupuestos · M
 

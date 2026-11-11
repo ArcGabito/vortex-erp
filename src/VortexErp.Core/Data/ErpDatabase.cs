@@ -307,5 +307,13 @@ internal static class Schema
             PRIMARY KEY (entry_id, line_no));
         CREATE INDEX ix_journal_lines_account ON journal_lines (account_code);
         """,
+        // 11: contabilidad 5b. Centros de costo (registro del ERP) y el de cada línea de asiento; el comprobante electrónico
+        // que trae una venta de caja (no se vuelve a facturar).
+        """
+        CREATE TABLE cost_centers (code TEXT PRIMARY KEY, name TEXT NOT NULL, is_active INTEGER NOT NULL, updated_at TEXT NOT NULL);
+        ALTER TABLE journal_lines ADD COLUMN cost_center TEXT;
+        CREATE INDEX ix_journal_lines_cost_center ON journal_lines (cost_center);
+        ALTER TABLE pos_sales ADD COLUMN fiscal_number TEXT;
+        """,
     ];
 }

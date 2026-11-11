@@ -79,7 +79,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             await AccountingService.RequireOpenPeriodAsync(c, tx, DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime));
             var sale = await PosSaleAsync(c, tx, saleId);
             Require(sale is not null, T("error.la_venta_no_existe"));
-            Require(sale!.CanInvoice, sale.InvoiceId is not null ? T("error.la_venta_ya_tiene_comprobante") : T("error.la_venta_esta_anulada"));
+            Require(sale!.FiscalNumber is null, T("error.venta_con_comprobante_electronico", sale.FiscalNumber));
+            Require(sale.CanInvoice, sale.InvoiceId is not null ? T("error.la_venta_ya_tiene_comprobante") : T("error.la_venta_esta_anulada"));
             Require(sale.Returned == 0, T("error.la_venta_tiene_devoluciones_emite"));
             var lines = await c.QueryAsync("SELECT * FROM pos_sale_lines WHERE sale_id = $id ORDER BY line_no", r =>
                 new InvoiceLine(r.Guid("item_id"), r.StrOrNull("name") ?? "Artículo", r.Dec("quantity"), r.Dec("unit_price"), r.Dec("total"),
@@ -523,7 +524,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     public async Task<PagedResult<PosSaleRow>> GetPosSalesAsync(bool uninvoicedOnly, int page, int pageSize, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        var where = $"WHERE ($only = 0 OR (s.invoice_id IS NULL AND s.status = 'completed')){SiteFilterOrNull("s.site_id")}";
+        var where = $"WHERE ($only = 0 OR (s.invoice_id IS NULL AND s.fiscal_number IS NULL AND s.status = 'completed')){SiteFilterOrNull("s.site_id")}";
         var total = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM pos_sales s {where}", null, ("$only", uninvoicedOnly));
         var rows = await c.QueryAsync($"{SelectSales} {where} ORDER BY s.created_at DESC LIMIT $limit OFFSET $offset", ReadSale, null,
             ("$only", uninvoicedOnly), ("$limit", pageSize), ("$offset", (page - 1) * pageSize));
@@ -558,9 +559,9 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             return;
         var credit = (e.Payments ?? []).Where(p => p.Method == "credit").Sum(p => p.Amount);
         await c.ExecAsync("""
-            INSERT INTO pos_sales (id, number, site_id, customer_id, status, currency_code, subtotal, tax, total, credit, created_at)
-            VALUES ($id, $number, $site, $customer, 'completed', $currency, $subtotal, $tax, $total, $credit, $at)
-            """, tx, ("$id", e.SaleId), ("$number", e.Number ?? e.SaleId.ToString()[..8].ToUpperInvariant()), ("$site", e.SiteId),
+            INSERT INTO pos_sales (id, number, site_id, customer_id, status, currency_code, subtotal, tax, total, credit, created_at, fiscal_number)
+            VALUES ($id, $number, $site, $customer, 'completed', $currency, $subtotal, $tax, $total, $credit, $at, $fiscal)
+            """, tx, ("$fiscal", e.Fiscal?.FullNumber), ("$id", e.SaleId), ("$number", e.Number ?? e.SaleId.ToString()[..8].ToUpperInvariant()), ("$site", e.SiteId),
             ("$customer", e.CustomerId), ("$currency", e.CurrencyCode ?? "PEN"), ("$subtotal", e.Subtotal), ("$tax", e.Tax),
             ("$total", e.Total), ("$credit", credit), ("$at", at));
         var lineNo = 0;
@@ -792,5 +793,5 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     private static PosSaleRow ReadSale(SqliteDataReader r) => new(
         r.Guid("id"), r.Str("number"), r.GuidOrNull("site_id"), r.StrOrNull("site_name"), r.GuidOrNull("customer_id"),
         r.StrOrNull("customer_name"), r.Str("status"), r.Str("currency_code"), r.Dec("total"), r.Dec("credit"), r.Dec("returned"),
-        r.Time("created_at"), r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"));
+        r.Time("created_at"), r.GuidOrNull("invoice_id"), r.StrOrNull("invoice_number"), r.StrOrNull("fiscal_number"));
 }

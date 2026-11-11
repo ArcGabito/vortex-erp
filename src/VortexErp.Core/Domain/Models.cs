@@ -303,9 +303,10 @@ public sealed record ReceivableRow(Guid? CustomerId, string CustomerName, int In
 public sealed record PosSaleRow(
     Guid Id, string Number, Guid? SiteId, string? SiteName, Guid? CustomerId, string? CustomerName, string Status,
     string CurrencyCode, decimal Total, decimal Credit, decimal Returned, DateTimeOffset CreatedAt, Guid? InvoiceId,
-    string? InvoiceNumber)
+    string? InvoiceNumber, string? FiscalNumber = null)
 {
-    public bool CanInvoice => Status == "completed" && InvoiceId is null;
+    /// <summary>Si el ERP puede emitirle comprobante: no si la caja ya emitió el suyo electrónico (<see cref="FiscalNumber"/>).</summary>
+    public bool CanInvoice => Status == "completed" && InvoiceId is null && FiscalNumber is null;
 }
 
 // ---------- Compras ----------
