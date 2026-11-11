@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Sugerencias de compra del WMS:** `purchase.requested` llega como solicitud de compra por aprobar con el número del
+  almacén, el proveedor y el costo promedio (ERP-26).
 - **Contabilidad (fase 5b):** centros de costo (por línea y por sede) con resultado por centro; cierre anual contra
   utilidades acumuladas con asiento de apertura; diferencia de cambio no realizada con reversión al día siguiente. Las
   ventas de caja con comprobante electrónico del POS no se vuelven a facturar.

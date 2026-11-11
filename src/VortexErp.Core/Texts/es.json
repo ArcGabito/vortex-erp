@@ -145,6 +145,8 @@
   "audit.usuario": "Usuario",
   "cobranza.linea": "• {0}, venció el {1} (hace {3} días): {2}",
   "cobranza.mensaje": "Hola, {0}. Le escribimos de {3}: tiene comprobantes vencidos por {1}.\n{2}\nPor favor, coordine el pago con nosotros. ¡Gracias!",
+  "compras.para_el": "para el {0}",
+  "compras.sugerida_por_wms": "Sugerida por el almacén",
   "contab.anulacion": "Anulación {0}",
   "contab.apertura_ejercicio": "Apertura del ejercicio {0}",
   "contab.cierre_ejercicio": "Cierre del ejercicio {0}",

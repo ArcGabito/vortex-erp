@@ -104,6 +104,30 @@ public sealed class PayablesService(ErpDatabase db, IErpContext context, TimePro
         }, ct);
     }
 
+    /// <summary>
+    /// Sugerencia de compra del WMS (<c>purchase.requested</c>): solicitud por aprobar con el Id y el número del WMS, al costo
+    /// promedio del almacén. Cada equipo del ERP la aplica igual (mismo Id) y no se vuelve a publicar. El evento solo crea: si
+    /// la solicitud ya existe (aprobada, rechazada u ordenada), no se toca.
+    /// </summary>
+    internal static async Task<string?> ApplyWarehouseRequestAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, PurchaseRequested d)
+    {
+        var lines = (d.Lines ?? []).Where(l => l.ItemId != Guid.Empty && l.Quantity > 0)
+            .Select(l => new PurchaseRequestLine(l.ItemId, l.Quantity, l.UnitCost is >= 0 ? l.UnitCost : null)).ToList();
+        if (d.RequestId == Guid.Empty || lines.Count == 0)
+            return "solicitud sin líneas";
+        if (await c.ScalarAsync<long>("SELECT COUNT(*) FROM purchase_requests WHERE id = $id", tx, ("$id", d.RequestId)) > 0)
+            return "ya estaba";
+        var notes = string.Join(" · ", new[]
+        {
+            T("compras.sugerida_por_wms"), d.NeededBy is { } on ? T("compras.para_el", on.ToString("dd/MM/yyyy")) : null, Clean(d.Notes),
+        }.Where(x => x is not null));
+        var data = new PurchaseRequestData(d.RequestId, Clean(d.Number) ?? d.RequestId.ToString()[..8], d.SiteId, d.SupplierId,
+            PurchaseRequestStatuses.Pending, await Fx.CompanyCurrencyAsync(c, tx), lines.Sum(l => Tax.Round(l.Quantity * (l.UnitCost ?? 0))), notes,
+            Clean(d.RequestedBy) is { } who ? $"WMS · {who}" : "WMS", at, null, null, null, null, lines);
+        return await ApplyAsync(c, tx, new ErpRecord(ErpRecordKinds.PurchaseRequest, d.RequestId.ToString(), at,
+            JsonSerializer.SerializeToElement(data, VortexJson.Options))) ? null : "ya estaba";
+    }
+
     public Task ApproveRequestAsync(Guid id, CancellationToken ct = default) => DecideAsync(id, true, null, ct);
 
     public Task RejectRequestAsync(Guid id, string reason, CancellationToken ct = default)

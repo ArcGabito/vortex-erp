@@ -33,6 +33,38 @@ public sealed class PayablesTests : IAsyncLifetime
         new GoodsReceived(Guid.NewGuid(), "REC-1", po, _a.Central, [new QuantityLine(_a.Coffee, qty)]), source: "WMS"));
 
     [Fact]
+    public async Task La_sugerencia_de_compra_del_wms_llega_como_solicitud_por_aprobar_una_sola_vez()
+    {
+        var id = Guid.NewGuid();
+        var e = TestWorkspace.Event(SuiteEvents.PurchaseRequested, new PurchaseRequested(id, "SC-WMS1-00001", _a.Central, _a.Supplier,
+            new DateOnly(2026, 11, 20), "Urgente", "Luis", [new PurchaseRequestedLine(_a.Coffee, 85, 6m, 2m, 7.5m)]), source: "WMS");
+        await _a.Erp.SyncHandlers.HandlePurchaseRequestedAsync(e);
+        await _b.Erp.SyncHandlers.HandlePurchaseRequestedAsync(e);
+
+        foreach (var erp in new[] { _a, _b })
+        {
+            var request = Assert.Single(await erp.Erp.Payables.GetRequestsAsync());
+            Assert.Equal((id, "SC-WMS1-00001", PurchaseRequestStatuses.Pending, 510m, _a.Supplier),
+                (request.Id, request.Number, request.Status, request.Total, request.SupplierId!.Value));
+            Assert.Equal("WMS · Luis", request.RequestedBy);
+            Assert.Contains("20/11/2026", request.Notes);
+        }
+        Assert.DoesNotContain(await _a.OutboxAsync(), x => x.EventType == SuiteEvents.RecordUpserted);   // cada equipo la aplica solo
+
+        // Aprobada aquí, el mismo evento repetido (otro Id de entrega) no la vuelve a dejar pendiente.
+        _a.Context.Role = ErpPermissions.Accountant;
+        await _a.Erp.Payables.ApproveRequestAsync(id);
+        await _a.Erp.SyncHandlers.HandlePurchaseRequestedAsync(TestWorkspace.Event(SuiteEvents.PurchaseRequested,
+            new PurchaseRequested(id, "SC-WMS1-00001", _a.Central, _a.Supplier, null, null, null, [new PurchaseRequestedLine(_a.Coffee, 85)]), source: "WMS"));
+        Assert.Equal(PurchaseRequestStatuses.Approved, Assert.Single(await _a.Erp.Payables.GetRequestsAsync()).Status);
+
+        // Solo el WMS envía sugerencias.
+        await _a.Erp.SyncHandlers.HandlePurchaseRequestedAsync(TestWorkspace.Event(SuiteEvents.PurchaseRequested,
+            new PurchaseRequested(Guid.NewGuid(), "X", _a.Central, null, null, null, null, [new PurchaseRequestedLine(_a.Coffee, 1)]), source: "POS"));
+        Assert.Single(await _a.Erp.Payables.GetRequestsAsync());
+    }
+
+    [Fact]
     public async Task Una_compra_sobre_el_umbral_se_pide_se_aprueba_y_se_convierte_en_orden()
     {
         await _a.Erp.Payables.SaveSettingsAsync(new PurchaseSettings(100m));

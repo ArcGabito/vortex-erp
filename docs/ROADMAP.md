@@ -48,7 +48,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | ERP-25 | Órdenes de compra recibidas por el WMS | Hecho | — |
-| ERP-26 | Solicitudes de compra (también las sugeridas por el WMS) | Parcial: falta recibir las del WMS (`purchase.requested`, fase 6 del WMS) | 4a |
+| ERP-26 | Solicitudes de compra (también las sugeridas por el WMS) | Hecho | 4a |
 | ERP-27 | Aprobación de compras por monto | Hecho | 4a |
 | ERP-28 | Factura de proveedor con conciliación de tres vías (OC, recepción, factura) | Hecho | 4a |
 | ERP-29 | Cuentas por pagar con vencimientos | Hecho | 4a |
