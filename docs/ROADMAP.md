@@ -70,7 +70,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | ERP-45 | Plan de cuentas por país (PCGE, México, Colombia, US GAAP, PGC) | Hecho (también Brasil y uno general) | 5a |
-| ERP-46 | Asientos automáticos desde ventas, cobros, compras, pagos, inventario y diferencia de cambio | Parcial: todo menos inventario (fase 6) | 5a |
+| ERP-46 | Asientos automáticos desde ventas, cobros, compras, pagos, inventario y diferencia de cambio | Hecho | 5a, 6a |
 | ERP-47 | Asientos manuales con aprobación | Hecho | 5a |
 | ERP-48 | Libro diario, mayor y balance de comprobación | Hecho | 5a |
 | ERP-49 | Estado de resultados y balance general | Hecho | 5a |
@@ -82,9 +82,9 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| ERP-55 | Inventario valorizado con el stock del WMS | Parcial: al último costo de compra | 6 |
-| ERP-56 | Costo de ventas con el costo promedio del WMS | Pendiente | 6 |
-| ERP-57 | Asientos de inventario (entradas, salidas, ajustes) | Pendiente | 6 |
+| ERP-55 | Inventario valorizado con el stock del WMS | Hecho | 6a |
+| ERP-56 | Costo de ventas con el costo promedio del WMS | Hecho | 6a |
+| ERP-57 | Asientos de inventario (entradas, salidas, ajustes) | Hecho | 6a |
 | ERP-58 | Activos fijos con depreciación por país | Pendiente | 6 |
 | ERP-59 | Presupuestos y comparación con lo real | Pendiente | 6 |
 
@@ -296,6 +296,15 @@ del POS) no se vuelve a facturar. Pruebas en `AccountingCloseTests`.
 - ERP-59: presupuestos por cuenta y centro de costo, comparados con lo real.
 
 **Terminado cuando:** el costo de ventas del ERP coincide con el del kardex valorizado del WMS en el mismo periodo.
+
+**Estado 6a, costos (2026-11):** hecha. El ERP guarda cada `stock.adjusted` del WMS (Id del movimiento) con su costo
+promedio y valoriza el inventario con ese costo (sin WMS, el último costo de compra). Asientos automáticos de inventario,
+uno por día y sede: lo **recibido** va a Mercaderías contra **Variación de existencias** (la compra ya se cargó como gasto,
+como en el PCGE), lo **vendido o despachado** (y sus anulaciones y devoluciones) a **Costo de ventas**, los **ajustes**
+(conteos, mermas, devoluciones a proveedor) a **Mermas y faltantes**; los traslados entre sedes no se contabilizan. Roles
+nuevos en el plan de cada país (`inventory`, `cost_of_sales`, `inventory_variation`, `inventory_adjustment`); las cuentas
+que el plan base agrega rigen también en un plan ya guardado. Así el costo de ventas del periodo es la suma de las salidas
+del kardex valorizado del WMS. Pruebas en `InventoryCostTests`. Sigue 6b (activos fijos y presupuestos).
 
 ## Fase 7: localización fiscal · XL
 

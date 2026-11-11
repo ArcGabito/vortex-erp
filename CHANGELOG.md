@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Costos (fase 6a):** inventario valorizado al costo promedio del WMS y asientos diarios de inventario: entradas contra
+  variación de existencias, costo de ventas y mermas, con las cuentas nuevas en el plan de cada país.
 - **Sugerencias de compra del WMS:** `purchase.requested` llega como solicitud de compra por aprobar con el número del
   almacén, el proveedor y el costo promedio (ERP-26).
 - **Contabilidad (fase 5b):** centros de costo (por línea y por sede) con resultado por centro; cierre anual contra

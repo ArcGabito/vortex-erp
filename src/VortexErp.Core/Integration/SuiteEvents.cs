@@ -168,7 +168,12 @@ public sealed record PurchaseRequestedLine(Guid ItemId, decimal Quantity, decima
 
 public sealed record GoodsReceived(Guid ReceiptId, string? Number, Guid? PurchaseOrderId, Guid SiteId, IReadOnlyList<QuantityLine>? Lines);
 
-public sealed record StockAdjusted(Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string? Reason);
+/// <summary>
+/// <c>stock.adjusted</c>: el WMS lo publica en cada movimiento (Id del evento = Id del movimiento). <c>UnitCost</c> y
+/// <c>TotalCost</c> (con el signo del movimiento) son su costo promedio en la moneda de la empresa (WMS fase 1).
+/// </summary>
+public sealed record StockAdjusted(Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string? Reason, string? Reference = null,
+    decimal? UnitCost = null, decimal? TotalCost = null);
 
 public sealed record ShipmentDispatched(
     Guid ShipmentId, Guid OrderId, Guid? CustomerId, string? Carrier, string? TrackingNumber, string? Number,

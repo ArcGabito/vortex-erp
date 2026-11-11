@@ -315,5 +315,14 @@ internal static class Schema
         CREATE INDEX ix_journal_lines_cost_center ON journal_lines (cost_center);
         ALTER TABLE pos_sales ADD COLUMN fiscal_number TEXT;
         """,
+        // 12: costos (fase 6a). Cada movimiento de stock del WMS (stock.adjusted, Id del movimiento) con su costo promedio y
+        // el asiento en que entró; el costo promedio vigente por artículo y sede.
+        """
+        CREATE TABLE inventory_movements (
+            id TEXT PRIMARY KEY, site_id TEXT NOT NULL, item_id TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT, reference TEXT,
+            quantity REAL NOT NULL, unit_cost REAL, total_cost REAL, entry_id TEXT);
+        CREATE INDEX ix_inventory_movements_pending ON inventory_movements (entry_id, occurred_at);
+        ALTER TABLE stock ADD COLUMN avg_cost REAL;
+        """,
     ];
 }
