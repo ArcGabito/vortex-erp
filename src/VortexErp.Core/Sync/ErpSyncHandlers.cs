@@ -220,16 +220,25 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
     public Task HandleGoodsReceivedAsync(VortexEvent e, CancellationToken ct = default) =>
         ApplyOnceAsync<GoodsReceived>(e, (g, c, tx) => PurchaseService.ApplyGoodsReceivedAsync(c, tx, e.OccurredAt, g), ct);
 
-    /// <summary>Stock del WMS: se guarda el saldo absoluto (<c>quantityOnHand</c>); el feed llega en orden y el último gana.</summary>
+    /// <summary>
+    /// Stock del WMS: se guarda el saldo absoluto (<c>quantityOnHand</c>; el feed llega en orden y el último gana), el costo
+    /// promedio y el movimiento con su costo para los asientos de inventario (fase 6a).
+    /// </summary>
     public Task HandleStockAdjustedAsync(VortexEvent e, CancellationToken ct = default) =>
         ApplyOnceAsync<StockAdjusted>(e, async (s, c, tx) =>
         {
             if (s.SiteId == Guid.Empty || s.ItemId == Guid.Empty)
                 return "sin siteId o itemId";
             await c.ExecAsync("""
-                INSERT INTO stock (site_id, item_id, on_hand, updated_at) VALUES ($site, $item, $qty, $at)
-                ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = $qty, updated_at = $at
-                """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityOnHand), ("$at", e.OccurredAt));
+                INSERT INTO stock (site_id, item_id, on_hand, updated_at, avg_cost) VALUES ($site, $item, $qty, $at, $cost)
+                ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = $qty, updated_at = $at, avg_cost = COALESCE($cost, avg_cost)
+                """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityOnHand), ("$at", e.OccurredAt), ("$cost", s.UnitCost));
+            if (s.QuantityDelta != 0)
+                await c.ExecAsync("""
+                    INSERT OR IGNORE INTO inventory_movements (id, site_id, item_id, occurred_at, reason, reference, quantity, unit_cost, total_cost)
+                    VALUES ($id, $site, $item, $at, $reason, $ref, $qty, $unit, $total)
+                    """, tx, ("$id", e.Id), ("$site", s.SiteId), ("$item", s.ItemId), ("$at", e.OccurredAt), ("$reason", s.Reason),
+                    ("$ref", s.Reference), ("$qty", s.QuantityDelta), ("$unit", s.UnitCost), ("$total", s.TotalCost));
             return null;
         }, ct);
 

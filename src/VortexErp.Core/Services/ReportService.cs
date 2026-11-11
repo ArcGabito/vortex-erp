@@ -7,8 +7,9 @@ namespace VortexErp.Core.Services;
 public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvider clock) : ErpService(db, context, clock)
 {
     /// <summary>Costo unitario: el de la última orden de compra del artículo o, si no hubo compras, su precio de lista.</summary>
+    // El costo promedio que informa el WMS (fase 6a); sin él, el último costo de compra y, si no, el precio.
     private const string UnitCost = """
-        COALESCE((SELECT l.unit_cost FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.po_id
+        COALESCE(s.avg_cost, (SELECT l.unit_cost FROM purchase_order_lines l JOIN purchase_orders o ON o.id = l.po_id
                   WHERE l.item_id = s.item_id AND o.status <> 'cancelled' ORDER BY o.created_at DESC LIMIT 1), i.price)
         """;
 
@@ -28,7 +29,7 @@ public sealed class ReportService(ErpDatabase db, IErpContext context, TimeProvi
         var rows = await c.QueryAsync($"""
             SELECT s.*, COALESCE(t.name, '?') AS site_name, i.sku, i.name AS item_name, i.category, i.unit,
                    {UnitCost} AS unit_cost,
-                   EXISTS (SELECT 1 FROM purchase_order_lines l WHERE l.item_id = s.item_id) AS from_purchase
+                   (s.avg_cost IS NOT NULL OR EXISTS (SELECT 1 FROM purchase_order_lines l WHERE l.item_id = s.item_id)) AS from_purchase
             {from} {where} ORDER BY i.name COLLATE NOCASE, t.name LIMIT $limit OFFSET $offset
             """, r => new StockRow(r.Guid("site_id"), r.Str("site_name"), r.Guid("item_id"), r.Str("sku"), r.Str("item_name"),
                 r.StrOrNull("category"), r.Str("unit"), r.Dec("on_hand"), r.Dec("unit_cost"), r.Bool("from_purchase"), r.Time("updated_at")),

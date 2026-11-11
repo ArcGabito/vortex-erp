@@ -35,8 +35,20 @@ public static class AccountRoles
     public const string RetainedEarnings = "retained_earnings";
     public const string Capital = "capital";
 
+    /// <summary>Mercaderías (fase 6a): entra lo recibido y sale lo vendido, al costo promedio del WMS.</summary>
+    public const string Inventory = "inventory";
+
+    /// <summary>Costo de ventas: lo que sale del inventario al vender o despachar.</summary>
+    public const string CostOfSales = "cost_of_sales";
+
+    /// <summary>Variación de existencias: contrapartida de lo recibido (las compras ya se cargaron como gasto).</summary>
+    public const string InventoryVariation = "inventory_variation";
+
+    /// <summary>Mermas, faltantes y sobrantes de inventario (ajustes, conteos, devoluciones a proveedor).</summary>
+    public const string InventoryAdjustment = "inventory_adjustment";
+
     public static readonly string[] All = [Cash, Bank, Transit, Receivables, Payables, TaxPayable, TaxCredit, Revenue, Purchases, FxGain, FxLoss,
-        BankFees, InterestIncome, Other, RetainedEarnings, Capital];
+        BankFees, InterestIncome, Other, RetainedEarnings, Capital, Inventory, CostOfSales, InventoryVariation, InventoryAdjustment];
 }
 
 /// <summary>
@@ -68,7 +80,7 @@ public static class ChartTemplates
     [
         ("101", "Caja", A, AccountRoles.Cash), ("1041", "Cuentas corrientes operativas", A, AccountRoles.Bank),
         ("103", "Efectivo en tránsito", A, AccountRoles.Transit), ("1212", "Facturas, boletas y otros comprobantes por cobrar - emitidas en cartera", A, AccountRoles.Receivables),
-        ("20111", "Mercaderías", A, null), ("40111", "IGV - Cuenta propia", L, AccountRoles.TaxPayable),
+        ("20111", "Mercaderías", A, AccountRoles.Inventory), ("6111", "Variación de existencias - Mercaderías", X, AccountRoles.InventoryVariation), ("6911", "Costo de ventas - Mercaderías", X, AccountRoles.CostOfSales), ("6593", "Mermas y faltantes de existencias", X, AccountRoles.InventoryAdjustment), ("40111", "IGV - Cuenta propia", L, AccountRoles.TaxPayable),
         ("40112", "IGV - Crédito fiscal", A, AccountRoles.TaxCredit), ("4212", "Facturas, boletas y otros comprobantes por pagar - emitidas", L, AccountRoles.Payables),
         ("501", "Capital social", E, AccountRoles.Capital), ("591", "Utilidades no distribuidas", E, AccountRoles.RetainedEarnings),
         ("6011", "Compras de mercaderías", X, AccountRoles.Purchases), ("6391", "Gastos bancarios", X, AccountRoles.BankFees),
@@ -81,7 +93,7 @@ public static class ChartTemplates
     [
         ("101.01", "Caja y efectivo", A, AccountRoles.Cash), ("102.01", "Bancos nacionales", A, AccountRoles.Bank),
         ("102.03", "Efectivo en tránsito", A, AccountRoles.Transit), ("105.01", "Clientes nacionales", A, AccountRoles.Receivables),
-        ("118.01", "IVA acreditable pagado", A, AccountRoles.TaxCredit), ("115.01", "Inventario", A, null),
+        ("118.01", "IVA acreditable pagado", A, AccountRoles.TaxCredit), ("115.01", "Inventario", A, AccountRoles.Inventory), ("501.01", "Costo de venta", X, AccountRoles.CostOfSales), ("502.90", "Variación de inventario", X, AccountRoles.InventoryVariation), ("703.20", "Mermas de inventario", X, AccountRoles.InventoryAdjustment),
         ("201.01", "Proveedores nacionales", L, AccountRoles.Payables), ("208.01", "IVA trasladado cobrado", L, AccountRoles.TaxPayable),
         ("301.01", "Capital fijo", E, AccountRoles.Capital), ("304.01", "Utilidad de ejercicios anteriores", E, AccountRoles.RetainedEarnings),
         ("401.01", "Ventas y/o servicios gravados a la tasa general", I, AccountRoles.Revenue), ("502.01", "Compras nacionales", X, AccountRoles.Purchases),
@@ -94,7 +106,7 @@ public static class ChartTemplates
     [
         ("110505", "Caja general", A, AccountRoles.Cash), ("111005", "Bancos - moneda nacional", A, AccountRoles.Bank),
         ("112005", "Efectivo en tránsito", A, AccountRoles.Transit), ("130505", "Clientes nacionales", A, AccountRoles.Receivables),
-        ("143501", "Mercancías no fabricadas por la empresa", A, null), ("240810", "IVA descontable", A, AccountRoles.TaxCredit),
+        ("143501", "Mercancías no fabricadas por la empresa", A, AccountRoles.Inventory), ("613505", "Costo de ventas - comercio", X, AccountRoles.CostOfSales), ("620599", "Variación de inventarios", X, AccountRoles.InventoryVariation), ("539520", "Mermas de inventario", X, AccountRoles.InventoryAdjustment), ("240810", "IVA descontable", A, AccountRoles.TaxCredit),
         ("220505", "Proveedores nacionales", L, AccountRoles.Payables), ("240805", "IVA generado", L, AccountRoles.TaxPayable),
         ("310505", "Capital autorizado", E, AccountRoles.Capital), ("370505", "Utilidades acumuladas", E, AccountRoles.RetainedEarnings),
         ("413505", "Comercio al por mayor y al por menor", I, AccountRoles.Revenue), ("421005", "Intereses", I, AccountRoles.InterestIncome),
@@ -107,7 +119,7 @@ public static class ChartTemplates
     [
         ("1000", "Cash on hand", A, AccountRoles.Cash), ("1010", "Checking account", A, AccountRoles.Bank),
         ("1050", "Cash in transit", A, AccountRoles.Transit), ("1200", "Accounts receivable", A, AccountRoles.Receivables),
-        ("1300", "Inventory", A, null), ("1400", "Input tax receivable", A, AccountRoles.TaxCredit),
+        ("1300", "Inventory", A, AccountRoles.Inventory), ("5100", "Cost of goods sold", X, AccountRoles.CostOfSales), ("5010", "Inventory change", X, AccountRoles.InventoryVariation), ("5200", "Inventory shrinkage", X, AccountRoles.InventoryAdjustment), ("1400", "Input tax receivable", A, AccountRoles.TaxCredit),
         ("2000", "Accounts payable", L, AccountRoles.Payables), ("2200", "Sales tax payable", L, AccountRoles.TaxPayable),
         ("3000", "Owner's equity", E, AccountRoles.Capital), ("3200", "Retained earnings", E, AccountRoles.RetainedEarnings),
         ("4000", "Sales revenue", I, AccountRoles.Revenue), ("4800", "Interest income", I, AccountRoles.InterestIncome),
@@ -120,7 +132,7 @@ public static class ChartTemplates
     [
         ("570", "Caja, euros", A, AccountRoles.Cash), ("572", "Bancos, cuentas corrientes", A, AccountRoles.Bank),
         ("5790", "Efectivo en tránsito", A, AccountRoles.Transit), ("430", "Clientes", A, AccountRoles.Receivables),
-        ("300", "Mercaderías", A, null), ("472", "Hacienda Pública, IVA soportado", A, AccountRoles.TaxCredit),
+        ("300", "Mercaderías", A, AccountRoles.Inventory), ("610", "Variación de existencias de mercaderías", X, AccountRoles.InventoryVariation), ("6101", "Coste de las mercaderías vendidas", X, AccountRoles.CostOfSales), ("6102", "Mermas de existencias", X, AccountRoles.InventoryAdjustment), ("472", "Hacienda Pública, IVA soportado", A, AccountRoles.TaxCredit),
         ("400", "Proveedores", L, AccountRoles.Payables), ("477", "Hacienda Pública, IVA repercutido", L, AccountRoles.TaxPayable),
         ("100", "Capital social", E, AccountRoles.Capital), ("113", "Reservas voluntarias", E, AccountRoles.RetainedEarnings),
         ("700", "Ventas de mercaderías", I, AccountRoles.Revenue), ("769", "Otros ingresos financieros", I, AccountRoles.InterestIncome),
@@ -133,7 +145,7 @@ public static class ChartTemplates
     [
         ("1.1.1.01", "Caixa", A, AccountRoles.Cash), ("1.1.1.02", "Bancos conta movimento", A, AccountRoles.Bank),
         ("1.1.1.03", "Numerário em trânsito", A, AccountRoles.Transit), ("1.1.2.01", "Clientes", A, AccountRoles.Receivables),
-        ("1.1.3.01", "Mercadorias", A, null), ("1.1.4.01", "Impostos a recuperar", A, AccountRoles.TaxCredit),
+        ("1.1.3.01", "Mercadorias", A, AccountRoles.Inventory), ("4.1.2.01", "Custo das mercadorias vendidas", X, AccountRoles.CostOfSales), ("4.1.1.02", "Variação de estoques", X, AccountRoles.InventoryVariation), ("4.2.9.02", "Perdas de estoque", X, AccountRoles.InventoryAdjustment), ("1.1.4.01", "Impostos a recuperar", A, AccountRoles.TaxCredit),
         ("2.1.1.01", "Fornecedores", L, AccountRoles.Payables), ("2.1.3.01", "Impostos a recolher", L, AccountRoles.TaxPayable),
         ("2.3.1.01", "Capital social", E, AccountRoles.Capital), ("2.3.3.01", "Lucros acumulados", E, AccountRoles.RetainedEarnings),
         ("3.1.1.01", "Receita de vendas", I, AccountRoles.Revenue), ("3.2.2.01", "Receitas financeiras", I, AccountRoles.InterestIncome),
@@ -145,7 +157,7 @@ public static class ChartTemplates
     public static readonly Template Generic = Make("General",
     [
         ("1101", "Caja", A, AccountRoles.Cash), ("1102", "Bancos", A, AccountRoles.Bank), ("1103", "Efectivo en tránsito", A, AccountRoles.Transit),
-        ("1201", "Cuentas por cobrar comerciales", A, AccountRoles.Receivables), ("1301", "Inventario de mercaderías", A, null),
+        ("1201", "Cuentas por cobrar comerciales", A, AccountRoles.Receivables), ("1301", "Inventario de mercaderías", A, AccountRoles.Inventory), ("5102", "Variación de inventarios", X, AccountRoles.InventoryVariation), ("5201", "Costo de ventas", X, AccountRoles.CostOfSales), ("6902", "Mermas de inventario", X, AccountRoles.InventoryAdjustment),
         ("1401", "Impuesto al valor agregado - crédito fiscal", A, AccountRoles.TaxCredit), ("2101", "Cuentas por pagar comerciales", L, AccountRoles.Payables),
         ("2201", "Impuesto al valor agregado por pagar", L, AccountRoles.TaxPayable), ("3101", "Capital", E, AccountRoles.Capital),
         ("3201", "Resultados acumulados", E, AccountRoles.RetainedEarnings), ("4101", "Ventas", I, AccountRoles.Revenue),

@@ -46,10 +46,12 @@ public sealed class AccountingService(ErpDatabase db, IErpContext context, TimeP
     {
         var stored = await c.QueryAsync("SELECT * FROM ledger_accounts ORDER BY code",
             r => new LedgerAccount(r.Str("code"), r.Str("name"), Enum.Parse<AccountType>(r.Str("type")), r.Bool("is_active")), tx);
-        if (stored.Count > 0)
-            return stored;
-        // Sin plan guardado rige el del país de la empresa.
-        return (await TemplateAsync(c, tx)).Accounts.ToList();
+        var template = (await TemplateAsync(c, tx)).Accounts;
+        if (stored.Count == 0)
+            return template.ToList();   // sin plan guardado rige el del país de la empresa
+        // Las cuentas que el plan base agregó después (p. ej. las de inventario de la fase 6a) también rigen.
+        var codes = stored.Select(a => a.Code).ToHashSet();
+        return stored.Concat(template.Where(a => !codes.Contains(a.Code))).OrderBy(a => a.Code, StringComparer.Ordinal).ToList();
     }
 
     private static async Task<ChartTemplates.Template> TemplateAsync(SqliteConnection c, SqliteTransaction? tx) =>
@@ -482,9 +484,46 @@ public sealed class AccountingService(ErpDatabase db, IErpContext context, TimeP
             await AddAsync(id, on, "treasury", null, m.Description, [new(code, amount, 0), new(counter, 0, amount)]);
         }
 
+        // Inventario (fase 6a) con el costo promedio del WMS: un asiento por día y sede con lo que entró (contra variación de
+        // existencias, porque la compra ya se cargó como gasto), lo vendido (costo de ventas) y los ajustes (mermas). Los
+        // traslados entre sedes no cambian el total. Cada movimiento queda marcado con su asiento.
+        var pending = await c.QueryAsync("""
+            SELECT id, site_id, occurred_at, reason, quantity, total_cost FROM inventory_movements
+            WHERE entry_id IS NULL AND total_cost IS NOT NULL AND total_cost <> 0 ORDER BY occurred_at, id
+            """, r => new { Id = r.Guid("id"), Site = r.Guid("site_id"), On = Local(r.Str("occurred_at")), Reason = r.StrOrNull("reason") ?? "",
+                Total = r.Dec("total_cost") }, tx);
+        foreach (var g in pending.GroupBy(m => (m.On, m.Site)))
+        {
+            var lines = new List<JournalLine>();
+            var center = Center(g.Key.Site);
+            foreach (var kind in g.GroupBy(m => InventoryKind(m.Reason)))
+            {
+                if (kind.Key is null)
+                    continue;
+                var amount = round.Round(kind.Sum(m => m.Total));   // positivo entra, negativo sale
+                var counter = Role(kind.Key);
+                lines.Add(amount > 0 ? new JournalLine(Role(AccountRoles.Inventory), amount, 0) : new JournalLine(Role(AccountRoles.Inventory), 0, -amount));
+                lines.Add(amount > 0 ? new JournalLine(counter, 0, amount, null, center) : new JournalLine(counter, -amount, 0, null, center));
+            }
+            var id = DeterministicId.From("je|inventory|" + string.Join(",", g.Select(m => m.Id)), g.Key.Site);
+            if (lines.Count > 0 && !await PostedAsync(id))
+                await AddAsync(id, g.Key.On, "inventory", null, T("contab.inventario_dia", g.Key.On.ToString("dd/MM/yyyy")), lines);
+            foreach (var m in g)
+                await c.ExecAsync("UPDATE inventory_movements SET entry_id = $e WHERE id = $id", tx, ("$e", id), ("$id", m.Id));
+        }
+
         await tx.CommitAsync(ct);
         return created;
     }
+
+    /// <summary>Contra qué cuenta va un movimiento de inventario según su motivo en el WMS (null: no se contabiliza).</summary>
+    internal static string? InventoryKind(string reason) => reason switch
+    {
+        "receipt" => AccountRoles.InventoryVariation,
+        "sale" or "shipment" or "sale_void" or "return" => AccountRoles.CostOfSales,
+        "transfer" => null,
+        _ => AccountRoles.InventoryAdjustment,
+    };
 
     // ---------- Libros y estados ----------
 
