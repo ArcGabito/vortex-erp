@@ -122,6 +122,7 @@ public static class ErpRecordKinds
     public const string LedgerAccount = "ledger_account";
     public const string AccountingSettings = "accounting_settings";
     public const string JournalEntry = "journal_entry";
+    public const string CostCenter = "cost_center";
 }
 
 /// <summary><c>erp.record.upserted</c>: la versión completa de un registro propio del ERP (gana el más nuevo por <c>UpdatedAt</c>).</summary>
@@ -134,9 +135,16 @@ public sealed record SaleLine(Guid ItemId, string? Sku, decimal Quantity, decima
 
 public sealed record SalePayment(string Method, decimal Amount);
 
+/// <param name="Fiscal">Comprobante electrónico que emitió la caja (POS fase 5a): el ERP no vuelve a facturar la venta.</param>
 public sealed record SaleCompleted(
     Guid SaleId, string? Number, Guid SiteId, Guid? CustomerId, string? CurrencyCode, decimal Subtotal, decimal Tax, decimal Total,
-    IReadOnlyList<SaleLine>? Lines, IReadOnlyList<SalePayment>? Payments);
+    IReadOnlyList<SaleLine>? Lines, IReadOnlyList<SalePayment>? Payments, SaleFiscal? Fiscal = null);
+
+/// <summary>Boleta, factura o nota de crédito electrónica de la caja: tipo, serie y número.</summary>
+public sealed record SaleFiscal(string Type, string Series, long Number)
+{
+    public string FullNumber => $"{Series}-{Number}";
+}
 
 public sealed record SaleVoided(Guid SaleId, string? Number, string? Reason);
 

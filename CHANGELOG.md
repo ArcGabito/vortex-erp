@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Contabilidad (fase 5b):** centros de costo (por línea y por sede) con resultado por centro; cierre anual contra
+  utilidades acumuladas con asiento de apertura; diferencia de cambio no realizada con reversión al día siguiente. Las
+  ventas de caja con comprobante electrónico del POS no se vuelven a facturar.
 - **Contabilidad (fase 5a):** plan de cuentas por país, asientos automáticos de ventas, notas, cobros (con diferencia de
   cambio), ventas de caja, compras, pagos y tesorería; asientos manuales con aprobación y reversión; libro diario, mayor,
   balance de comprobación, estado de resultados y balance general; cierre de periodo que bloquea documentos con fecha

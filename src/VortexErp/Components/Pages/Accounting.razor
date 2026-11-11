@@ -23,7 +23,17 @@
             }
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            @if (_tab is "journal" or "ledger" or "statements")
+            @if (_tab == "statements" && _centers.Count > 0)
+            {
+                <select class="select" style="width:auto" @bind="_statementCenter" @bind:after="ReloadAsync" aria-label="@(T("accounting.centro_de_costo"))">
+                    <option value="">@T("accounting.todos_los_centros")</option>
+                    @foreach (var cc in _centers)
+                    {
+                        <option value="@cc.Code">@cc.Code · @cc.Name</option>
+                    }
+                </select>
+            }
+            @if (_tab is "journal" or "ledger" or "statements" or "centers")
             {
                 <input class="control" type="date" style="width:auto" @bind="_from" @bind:after="ReloadAsync" aria-label="@(T("accounting.desde"))" />
             }
@@ -117,7 +127,7 @@
                     {
                         <p class="muted" style="margin:0">@T("accounting.sin_asientos")</p>
                     }
-                    @foreach (var e in _journal)
+                    @foreach (var e in _opening is { Lines.Count: > 0 } apertura ? _journal.Prepend(apertura) : _journal)
                     {
                         <div class="journal-entry" @key="e.Id">
                             <div style="display:flex;gap:8px;align-items:center">
@@ -130,7 +140,7 @@
                             </div>
                             @foreach (var l in e.Lines)
                             {
-                                <div class="journal-line"><span>@l.AccountCode @AccountName(l.AccountCode)</span><span class="num">@(l.Debit > 0 ? Money(l.Debit) : "")</span><span class="num">@(l.Credit > 0 ? Money(l.Credit) : "")</span></div>
+                                <div class="journal-line"><span>@l.AccountCode @AccountName(l.AccountCode)@(l.CostCenter is null ? "" : $" · {l.CostCenter}")</span><span class="num">@(l.Debit > 0 ? Money(l.Debit) : "")</span><span class="num">@(l.Credit > 0 ? Money(l.Credit) : "")</span></div>
                             }
                         </div>
                     }
@@ -158,6 +168,86 @@
                             }
                         </tbody>
                     </table>
+                </div>
+            </div>
+            break;
+
+        case "centers":
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-head">
+                        <div><h3>@T("accounting.resultado_por_centro")</h3><div class="sub">@T("accounting.resultado_por_centro_explica")</div></div>
+                    </div>
+                    <div class="card-body table-wrap">
+                        <table class="table">
+                            <thead><tr><th>@T("accounting.centro_de_costo")</th><th class="num">@T("accounting.ingresos")</th><th class="num">@T("accounting.gastos")</th><th class="num">@T("accounting.resultado")</th></tr></thead>
+                            <tbody>
+                                @foreach (var r in _centerResults)
+                                {
+                                    <tr @key="r.Code">
+                                        <td>@(r.Code is null ? r.Name : $"{r.Code} · {r.Name}")</td>
+                                        <td class="num">@Money(r.Income)</td><td class="num">@Money(r.Expense)</td>
+                                        <td class="num @(r.Result < 0 ? "bad-text" : "")">@Money(r.Result)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (_centerResults.Count == 0)
+                        {
+                            <p class="muted" style="margin:0">@T("accounting.sin_movimientos")</p>
+                        }
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:16px">
+                    <div class="card">
+                        <div class="card-head">
+                            <h3>@T("accounting.centros_de_costo")</h3>
+                            @if (Session.Can(ErpPermissions.ManageAccounting))
+                            {
+                                <button class="btn btn-sm" @onclick="() => (_center, _error) = (new CenterForm(), null)"><Icon Name="plus" Size="16" />@T("accounting.nuevo_centro")</button>
+                            }
+                        </div>
+                        <div class="card-body">
+                            @foreach (var cc in _centers)
+                            {
+                                <div class="list-row" @key="cc.Code">
+                                    <span class="two-line" style="flex:1"><span class="t1">@cc.Code · @cc.Name</span><span class="t2">@(cc.IsActive ? T("accounting.activo_centro") : T("accounting.inactivo_centro"))</span></span>
+                                    @if (Session.Can(ErpPermissions.ManageAccounting))
+                                    {
+                                        <button class="btn btn-sm btn-ghost" @onclick="() => (_center, _error) = (new CenterForm { Code = cc.Code, Name = cc.Name, IsActive = cc.IsActive, Existing = true }, null)">@T("accounting.editar")</button>
+                                    }
+                                </div>
+                            }
+                            @if (_centers.Count == 0)
+                            {
+                                <p class="muted" style="margin:0">@T("accounting.sin_centros")</p>
+                            }
+                        </div>
+                    </div>
+                    @if (_centers.Count > 0)
+                    {
+                        <div class="card">
+                            <div class="card-head">
+                                <div><h3>@T("accounting.centro_por_sede")</h3><div class="sub">@T("accounting.centro_por_sede_explica")</div></div>
+                                <button class="btn btn-dark btn-sm" disabled="@(!Session.Can(ErpPermissions.ManageAccounting))" @onclick="SaveSiteCentersAsync">@T("accounting.guardar")</button>
+                            </div>
+                            <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                                @foreach (var site in _sites)
+                                {
+                                    <div class="field" @key="site.Id">
+                                        <label>@site.Name</label>
+                                        <select class="select" value="@_siteCenters.GetValueOrDefault(site.Id)" @onchange="e => _siteCenters[site.Id] = e.Value?.ToString() ?? string.Empty">
+                                            <option value="">@T("accounting.sin_centro")</option>
+                                            @foreach (var cc in _centers.Where(x => x.IsActive))
+                                            {
+                                                <option value="@cc.Code">@cc.Code · @cc.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
             break;
@@ -214,6 +304,50 @@
                         </div>
                     </div>
                 </div>
+                <div class="card" style="align-self:start">
+                    <div class="card-head"><div><h3>@T("accounting.cierre_anual")</h3><div class="sub">@T("accounting.cierre_anual_explica")</div></div></div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input class="control" type="number" min="2000" max="2100" style="width:120px" @bind="_closeYear" aria-label="@(T("accounting.ejercicio"))" />
+                            <button class="btn btn-dark" disabled="@(_busy || !Session.Can(ErpPermissions.ApproveEntries))" @onclick="CloseYearAsync">@T("accounting.cerrar_ejercicio")</button>
+                        </div>
+                        @if (_yearClose is { } cierre)
+                        {
+                            <p style="margin:0">@T("accounting.ejercicio_cerrado", cierre.Year, Money(cierre.Result))</p>
+                        }
+                    </div>
+                </div>
+                <div class="card" style="align-self:start">
+                    <div class="card-head"><div><h3>@T("accounting.dif_cambio_no_realizada")</h3><div class="sub">@T("accounting.dif_cambio_explica")</div></div></div>
+                    <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <input class="control" type="date" style="width:auto" @bind="_fxDate" aria-label="@(T("accounting.fecha"))" />
+                            <button class="btn" disabled="@_busy" @onclick="() => RevalueAsync(false)">@T("accounting.calcular")</button>
+                            <button class="btn btn-dark" disabled="@(_busy || !Session.Can(ErpPermissions.ManageAccounting))" @onclick="() => RevalueAsync(true)">@T("accounting.contabilizar")</button>
+                        </div>
+                        @if (_fx is { } revaluacion)
+                        {
+                            @foreach (var fl in revaluacion.Lines)
+                            {
+                                <div class="list-row">
+                                    <span class="two-line" style="flex:1">
+                                        <span class="t1">@(fl.Kind == "receivable" ? T("accounting.por_cobrar") : T("accounting.por_pagar")) · @fl.Number</span>
+                                        <span class="t2">@fl.CurrencyCode @fl.Outstanding.ToString("N2") · @fl.BookedRate.ToString("0.####") → @fl.Rate.ToString("0.####")</span>
+                                    </span>
+                                    <span class="@(fl.Adjustment < 0 ? "bad-text" : "")">@Money(fl.Adjustment)</span>
+                                </div>
+                            }
+                            @if (revaluacion.Lines.Count == 0)
+                            {
+                                <p class="muted" style="margin:0">@T("accounting.sin_pendientes_otra_moneda")</p>
+                            }
+                            <div class="list-row statement-total">
+                                <strong style="flex:1">@(revaluacion.Result >= 0 ? T("accounting.ganancia") : T("accounting.perdida"))@(revaluacion.Posted ? $" · {T("accounting.contabilizado")}" : "")</strong>
+                                <strong>@Money(Math.Abs(revaluacion.Result))</strong>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
             break;
     }
@@ -237,6 +371,16 @@
                             <option value="@a.Code">@a.Code · @a.Name</option>
                         }
                     </select>
+                    @if (_centers.Count > 0)
+                    {
+                        <select class="select" @bind="l.CostCenter" aria-label="@(T("accounting.centro_de_costo"))">
+                            <option value="">@T("accounting.sin_centro")</option>
+                            @foreach (var cc in _centers.Where(x => x.IsActive))
+                            {
+                                <option value="@cc.Code">@cc.Code</option>
+                            }
+                        </select>
+                    }
                     <input class="control" type="number" min="0" step="0.01" placeholder="@(T("accounting.debe"))" @bind="l.Debit" />
                     <input class="control" type="number" min="0" step="0.01" placeholder="@(T("accounting.haber"))" @bind="l.Credit" />
                     <button class="btn btn-ghost icon-btn sm" @onclick="() => en.Lines.Remove(l)" aria-label="@(T("accounting.quitar"))"><Icon Name="x" Size="16" /></button>
@@ -277,9 +421,82 @@
     </Modal>
 }
 
+@if (_center is { } cf)
+{
+    <Modal Title="@(cf.Existing ? T("accounting.editar_centro") : T("accounting.nuevo_centro"))" Size="sm" Error="@_error" OnClose="() => _center = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field" style="max-width:140px"><label>@T("accounting.codigo")</label><input class="control" @bind="cf.Code" disabled="@cf.Existing" /></div>
+                <div class="field"><label>@T("accounting.nombre")</label><input class="control" @bind="cf.Name" /></div>
+            </div>
+            <label class="check"><input type="checkbox" @bind="cf.IsActive" />@T("accounting.activo_centro")</label>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _center = null">@T("accounting.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveCenterAsync">@T("accounting.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     private static (string, string)[] Tabs => [("trial", T("accounting.comprobacion")), ("statements", T("accounting.estados")), ("journal", T("accounting.diario")),
-        ("ledger", T("accounting.mayor")), ("chart", T("accounting.plan")), ("settings", T("accounting.ajustes"))];
+        ("ledger", T("accounting.mayor")), ("centers", T("accounting.centros")), ("chart", T("accounting.plan")), ("settings", T("accounting.ajustes"))];
+
+    private IReadOnlyList<CostCenter> _centers = [];
+    private IReadOnlyList<CostCenterResult> _centerResults = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private Dictionary<Guid, string> _siteCenters = [];
+    private string? _statementCenter;
+    private CenterForm? _center;
+    private JournalEntry? _opening;
+    private int _closeYear = DateTime.Today.Year - 1;
+    private YearClose? _yearClose;
+    private DateOnly _fxDate = DateOnly.FromDateTime(DateTime.Today);
+    private FxRevaluation? _fx;
+
+    private sealed class CenterForm
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public bool Existing { get; set; }
+    }
+
+    private async Task SaveCenterAsync()
+    {
+        var cf = _center!;
+        _error = await TryAsync(() => Erp.Accounting.SaveCostCenterAsync(new CostCenter(cf.Code, cf.Name, cf.IsActive)), T("accounting.centro_guardado"));
+        if (_error is null)
+        {
+            _center = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SaveSiteCentersAsync()
+    {
+        await RunAsync(() => Erp.Accounting.SaveSiteCostCentersAsync(_siteCenters), T("accounting.ajustes_guardados"));
+        await ReloadAsync();
+    }
+
+    private async Task CloseYearAsync()
+    {
+        _busy = true;
+        YearClose? done = null;
+        await RunAsync(async () => done = await Erp.Accounting.CloseYearAsync(_closeYear), T("accounting.ejercicio_cerrado_ok", _closeYear));
+        _busy = false;
+        _yearClose = done ?? _yearClose;
+        await ReloadAsync();
+    }
+
+    private async Task RevalueAsync(bool post)
+    {
+        _busy = true;
+        FxRevaluation? result = null;
+        await RunAsync(async () => result = await Erp.Accounting.RevalueFxAsync(_fxDate, post), post ? T("accounting.revaluacion_contabilizada") : null);
+        _busy = false;
+        _fx = result ?? _fx;
+    }
 
     private string _tab = "trial";
     private DateOnly _from = new(DateTime.Today.Year, DateTime.Today.Month, 1), _to = DateOnly.FromDateTime(DateTime.Today), _closeDate = DateOnly.FromDateTime(DateTime.Today);
@@ -300,6 +517,7 @@
     private sealed class EntryLine
     {
         public string Code { get; set; } = "";
+        public string? CostCenter { get; set; }
         public decimal Debit { get; set; }
         public decimal Credit { get; set; }
     }
@@ -340,17 +558,26 @@
         _settings = await Erp.Accounting.GetSettingsAsync();
         _roles = _settings.Roles.ToDictionary(r => r.Key, r => r.Value);
         _ledgerCode ??= _accounts.FirstOrDefault()?.Code;
+        _centers = await Erp.Accounting.GetCostCentersAsync();
+        _opening = null;
         switch (_tab)
         {
+            case "centers":
+                _centerResults = await Erp.Accounting.GetCostCenterResultsAsync(_from, _to);
+                _sites = await Erp.Master.GetSitesAsync(activeOnly: true);
+                _siteCenters = (_settings.SiteCostCenters ?? new Dictionary<Guid, string>()).ToDictionary(x => x.Key, x => x.Value);
+                break;
             case "trial":
                 _trial = await Erp.Accounting.GetTrialBalanceAsync(_to);
                 break;
             case "statements":
-                _income = await Erp.Accounting.GetIncomeStatementAsync(_from, _to);
+                _income = await Erp.Accounting.GetIncomeStatementAsync(_from, _to, string.IsNullOrEmpty(_statementCenter) ? null : _statementCenter);
                 _sheet = await Erp.Accounting.GetBalanceSheetAsync(_to);
                 break;
             case "journal":
                 _journal = await Erp.Accounting.GetJournalAsync(_from, _to);
+                if (_from.Month == 1 && _from.Day == 1)
+                    _opening = await Erp.Accounting.GetOpeningEntryAsync(_from.Year);
                 break;
             case "ledger" when _ledgerCode is { } code:
                 _ledger = await Erp.Accounting.GetLedgerAsync(code, _from, _to);
@@ -377,7 +604,7 @@
         var en = _entry!;
         _busy = true;
         _error = await TryAsync(() => Erp.Accounting.CreateEntryAsync(en.Date, en.Description,
-            en.Lines.Select(l => new JournalLine(l.Code, l.Debit, l.Credit)).ToList()), T("accounting.asiento_guardado"));
+            en.Lines.Select(l => new JournalLine(l.Code, l.Debit, l.Credit, null, string.IsNullOrEmpty(l.CostCenter) ? null : l.CostCenter)).ToList()), T("accounting.asiento_guardado"));
         _busy = false;
         if (_error is null)
         {

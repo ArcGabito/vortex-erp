@@ -155,7 +155,49 @@ public static class ChartTemplates
     ]);
 }
 
-public sealed record JournalLine(string AccountCode, decimal Debit, decimal Credit, string? Memo = null);
+/// <param name="CostCenter">Centro de costo (ERP-50): en los asientos manuales lo elige el contador; en los automáticos sale de la sede.</param>
+public sealed record JournalLine(string AccountCode, decimal Debit, decimal Credit, string? Memo = null, string? CostCenter = null);
+
+/// <summary>Centro de costo (ERP-50): tienda, área o proyecto al que se imputan ingresos y gastos.</summary>
+public sealed record CostCenter(string Code, string Name, bool IsActive = true);
+
+/// <summary>Resultado de un centro de costo en un periodo (sin centro: <c>Code</c> null).</summary>
+public sealed record CostCenterResult(string? Code, string Name, decimal Income, decimal Expense)
+{
+    public decimal Result => Income - Expense;
+}
+
+/// <summary>Orígenes de los asientos que arma la contabilidad misma (no un documento).</summary>
+public static class EntrySources
+{
+    public const string Manual = "manual";
+
+    /// <summary>Cierre anual: lleva el resultado del ejercicio a utilidades acumuladas (ERP-51).</summary>
+    public const string YearClose = "year_close";
+
+    /// <summary>Diferencia de cambio no realizada a una fecha y su reversión al día siguiente (ERP-52).</summary>
+    public const string FxRevaluation = "fx_revaluation";
+    public const string FxRevaluationReversal = "fx_revaluation_reversal";
+
+    /// <summary>Asiento de apertura del ejercicio (se arma de los saldos al cierre; no se guarda).</summary>
+    public const string Opening = "opening";
+}
+
+/// <summary>Un documento pendiente en otra moneda revaluado al tipo de cambio de la fecha.</summary>
+/// <param name="Kind"><c>receivable</c> (comprobante por cobrar) o <c>payable</c> (factura de proveedor por pagar).</param>
+/// <param name="Adjustment">En la moneda de la empresa: positivo, la cuenta crece (más por cobrar o más por pagar).</param>
+public sealed record FxRevaluationLine(string Kind, string Number, string CurrencyCode, decimal Outstanding, decimal BookedRate, decimal Rate,
+    decimal Adjustment);
+
+/// <summary>Diferencia de cambio no realizada a una fecha: el detalle por documento y el efecto neto en resultados.</summary>
+public sealed record FxRevaluation(DateOnly AsOf, IReadOnlyList<FxRevaluationLine> Lines, decimal Receivables, decimal Payables, bool Posted)
+{
+    /// <summary>Ganancia (positiva) o pérdida (negativa): crecer lo por cobrar gana, crecer lo por pagar pierde.</summary>
+    public decimal Result => Receivables - Payables;
+}
+
+/// <summary>Cierre de un ejercicio: el resultado que pasó a utilidades acumuladas.</summary>
+public sealed record YearClose(int Year, decimal Result, Guid EntryId);
 
 public static class EntryStatuses
 {

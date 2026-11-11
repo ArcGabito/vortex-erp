@@ -86,7 +86,7 @@ crédito es distinta de la factura `F3F0-000001`).
 
 | Evento | Efecto |
 |---|---|
-| `sale.completed` (POS) | Registra la venta de caja como ingreso; queda lista para emitir su boleta o factura |
+| `sale.completed` (POS) | Registra la venta de caja como ingreso; queda lista para emitir su boleta o factura, salvo que traiga `fiscal` (la caja ya emitió su comprobante electrónico) |
 | `sale.voided`, `sale.returned` (POS) | Anula la venta o descuenta lo devuelto del ingreso |
 | `quote.accepted` (CRM) | La cotización queda **por convertir** en pedido |
 | `deal.won` (CRM) | Se registra la oportunidad ganada |
