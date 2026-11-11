@@ -145,6 +145,8 @@
   "audit.usuario": "Usuário",
   "cobranza.linea": "• {0}, venceu em {1} (há {3} dias): {2}",
   "cobranza.mensaje": "Olá, {0}. Aqui é {3}: há comprovantes vencidos por {1}.\n{2}\nPor favor, combine o pagamento conosco. Obrigado!",
+  "compras.para_el": "para {0}",
+  "compras.sugerida_por_wms": "Sugerida pelo armazém",
   "contab.anulacion": "Anulação {0}",
   "contab.apertura_ejercicio": "Abertura do exercício {0}",
   "contab.cierre_ejercicio": "Encerramento do exercício {0}",

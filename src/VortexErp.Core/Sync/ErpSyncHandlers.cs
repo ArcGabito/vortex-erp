@@ -52,6 +52,7 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.PurchaseOrderCancelled, HandlePurchaseOrderCancelledAsync)
         .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
+        .OnEvent(SuiteEvents.PurchaseRequested, HandlePurchaseRequestedAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync);
 
     // ---------- Ventas: CRM, WMS, POS ----------
@@ -191,6 +192,12 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
             await PurchaseService.ApplyCancelledAsync(c, tx, po);
             return null;
         }, ct);
+
+    /// <summary>Sugerencia de compra del WMS: queda como solicitud por aprobar con el mismo Id (ERP-26).</summary>
+    public Task HandlePurchaseRequestedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<PurchaseRequested>(e, (d, c, tx) =>
+            e.Source != "WMS" ? Task.FromResult<string?>("ignorado: las sugerencias de compra las envía el WMS")
+                : PayablesService.ApplyWarehouseRequestAsync(c, tx, e.OccurredAt, d), ct);
 
     /// <summary>Efectivo de una caja del POS depositado en el banco: entra a la cuenta bancaria para conciliarlo (ERP-39).</summary>
     public Task HandleCashDepositedAsync(VortexEvent e, CancellationToken ct = default) =>

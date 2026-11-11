@@ -97,6 +97,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `stock.adjusted` (WMS) | Guarda el saldo absoluto (`quantityOnHand`) para valorizar el inventario |
 | Contabilidad (fase 5a) | Los asientos automáticos salen de los documentos de cada equipo (no viajan); viajan como `erp.record.upserted` el plan (`ledger_account`), los ajustes contables (`accounting_settings`: roles, cuentas de tesorería, cierre) y los asientos manuales (`journal_entry`) |
 | `cash.deposited` (POS) | El efectivo depositado sale de la caja y entra a la cuenta bancaria predeterminada de la moneda, para conciliarlo con el extracto (Ids deterministas por depósito) |
+| `purchase.requested` (WMS) | Sugerencia de compra del almacén: solicitud de compra **por aprobar** con el Id y el número del WMS, el proveedor, las cantidades y el costo promedio del almacén; la nota dice que la sugirió el almacén y para cuándo se necesita. Solo crea: si ya existe no se toca |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
 | Cambio de `party` (datos maestros) | Copia local del cliente con sus condiciones (`credit`: plazo, límite, descuento) |

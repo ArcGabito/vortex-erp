@@ -31,6 +31,9 @@ public static class SuiteEvents
     public const string QuoteAccepted = "quote.accepted";
     public const string DealWon = "deal.won";
     public const string GoodsReceived = "goods.received";
+
+    /// <summary>Sugerencia de compra del WMS (su fase 6a): llega como solicitud de compra por aprobar (ERP-26).</summary>
+    public const string PurchaseRequested = "purchase.requested";
     public const string StockAdjusted = "stock.adjusted";
     public const string ShipmentDispatched = "shipment.dispatched";
 
@@ -154,6 +157,14 @@ public sealed record QuoteAccepted(
     Guid QuoteId, string? Number, Guid? CustomerId, IReadOnlyList<OrderLine>? Lines, decimal Total, string? CurrencyCode);
 
 public sealed record DealWon(Guid DealId, Guid? CustomerId, decimal Amount, string? CurrencyCode, Guid? QuoteId);
+
+/// <summary><c>purchase.requested</c>: sugerencia de compra del almacén, por proveedor.</summary>
+public sealed record PurchaseRequested(Guid RequestId, string? Number, Guid SiteId, Guid? SupplierId, DateOnly? NeededBy, string? Notes,
+    string? RequestedBy, IReadOnlyList<PurchaseRequestedLine>? Lines);
+
+/// <param name="UnitCost">Costo promedio del almacén (referencia), en la moneda de la empresa.</param>
+public sealed record PurchaseRequestedLine(Guid ItemId, decimal Quantity, decimal? UnitCost = null, decimal? DailyUsage = null,
+    decimal? CoverageDays = null);
 
 public sealed record GoodsReceived(Guid ReceiptId, string? Number, Guid? PurchaseOrderId, Guid SiteId, IReadOnlyList<QuantityLine>? Lines);
 

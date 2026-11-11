@@ -145,6 +145,8 @@
   "audit.usuario": "User",
   "cobranza.linea": "• {0}, due {1} ({3} days ago): {2}",
   "cobranza.mensaje": "Hello, {0}. This is {3}: you have overdue invoices for {1}.\n{2}\nPlease arrange the payment with us. Thank you!",
+  "compras.para_el": "needed by {0}",
+  "compras.sugerida_por_wms": "Suggested by the warehouse",
   "contab.anulacion": "Void {0}",
   "contab.apertura_ejercicio": "Opening of fiscal year {0}",
   "contab.cierre_ejercicio": "Closing of fiscal year {0}",
