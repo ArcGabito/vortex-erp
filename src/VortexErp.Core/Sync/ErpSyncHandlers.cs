@@ -211,6 +211,7 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
                 return "ignorado: solo lo publica el ERP";
             var applied = TreasuryService.Handles(r.Kind) ? await TreasuryService.ApplyAsync(c, tx, r)
                 : AccountingService.Handles(r.Kind) ? await AccountingService.ApplyAsync(c, tx, r)
+                : AssetService.Handles(r.Kind) ? await AssetService.ApplyAsync(c, tx, r)
                 : await PayablesService.ApplyAsync(c, tx, r);
             return applied ? null : $"sin cambios ({r.Kind}: ya tenía uno más nuevo o es desconocido)";
         }, ct);

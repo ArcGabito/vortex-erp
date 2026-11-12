@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Activos y presupuestos (fase 6b):** activos fijos con depreciación mensual en línea recta a la tasa máxima del país,
+  alta y baja con sus asientos; presupuestos por cuenta y centro de costo comparados con lo real.
 - **Costos (fase 6a):** inventario valorizado al costo promedio del WMS y asientos diarios de inventario: entradas contra
   variación de existencias, costo de ventas y mermas, con las cuentas nuevas en el plan de cada país.
 - **Sugerencias de compra del WMS:** `purchase.requested` llega como solicitud de compra por aprobar con el número del

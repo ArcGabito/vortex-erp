@@ -85,8 +85,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | ERP-55 | Inventario valorizado con el stock del WMS | Hecho | 6a |
 | ERP-56 | Costo de ventas con el costo promedio del WMS | Hecho | 6a |
 | ERP-57 | Asientos de inventario (entradas, salidas, ajustes) | Hecho | 6a |
-| ERP-58 | Activos fijos con depreciación por país | Pendiente | 6 |
-| ERP-59 | Presupuestos y comparación con lo real | Pendiente | 6 |
+| ERP-58 | Activos fijos con depreciación por país | Hecho: línea recta con la tasa máxima del país | 6b |
+| ERP-59 | Presupuestos y comparación con lo real | Hecho | 6b |
 
 ### Control y seguridad
 
@@ -305,6 +305,17 @@ como en el PCGE), lo **vendido o despachado** (y sus anulaciones y devoluciones)
 nuevos en el plan de cada país (`inventory`, `cost_of_sales`, `inventory_variation`, `inventory_adjustment`); las cuentas
 que el plan base agrega rigen también en un plan ya guardado. Así el costo de ventas del periodo es la suma de las salidas
 del kardex valorizado del WMS. Pruebas en `InventoryCostTests`. Sigue 6b (activos fijos y presupuestos).
+
+**Estado 6b, activos y presupuestos (2026-11):** hecha; fase 6 terminada. Pantalla Activos y presupuestos. **Activos
+fijos** (registro `fixed_asset`) por categoría (edificios, vehículos, maquinaria, cómputo, muebles, otros) con la tasa
+anual máxima de cada país (Perú 5/20/10/25/10 %, México, Colombia, EE. UU. en línea recta MACRS, España, Brasil); la vida
+útil sugerida sale de esa tasa y no se acepta una más corta. Asientos automáticos: **alta** (contra compras, si vino de
+una factura de proveedor, o contra capital), **depreciación** de cada mes completo desde el mes siguiente al alta, al
+último día del mes y al centro de costo del activo, y **baja** con su ganancia o pérdida. Lo ya contabilizado no se
+cambia. **Presupuestos** (registro `budget`, Id por año + cuenta + centro) de cuentas de ingresos y gastos, 12 meses,
+comparados con lo real en un rango de meses (diferencia, % y si es favorable); las cuentas con movimiento sin
+presupuesto también se listan. Roles nuevos `fixed_assets`, `accumulated_depreciation`, `depreciation` y
+`asset_disposal` en el plan de cada país. Pruebas en `AssetsTests`.
 
 ## Fase 7: localización fiscal · XL
 

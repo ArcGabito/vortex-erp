@@ -1,0 +1,406 @@
+@page "/activos"
+@inherits ErpPage
+
+<SectionContent SectionName="page-title">@T("assets.activos_y_presupuestos")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("assets.activos_y_presupuestos")</h2>
+            <p>@T("assets.explica")</p>
+        </div>
+        @if (Session.Can(ErpPermissions.ManageAccounting))
+        {
+            @if (_tab == "assets")
+            {
+                <button class="btn btn-dark" @onclick="NewAsset"><Icon Name="plus" Size="18" />@T("assets.nuevo_activo")</button>
+            }
+            else
+            {
+                <button class="btn btn-dark" @onclick="() => EditBudget(null)"><Icon Name="plus" Size="18" />@T("assets.nuevo_presupuesto")</button>
+            }
+        }
+    </div>
+
+    <div class="filters">
+        <div class="segmented">
+            <button class="@(_tab == "assets" ? "on" : "")" @onclick="async () => { _tab = "assets"; await ReloadAsync(); }">@T("assets.activos")</button>
+            <button class="@(_tab == "budgets" ? "on" : "")" @onclick="async () => { _tab = "budgets"; await ReloadAsync(); }">@T("assets.presupuestos")</button>
+        </div>
+        @if (_tab == "budgets")
+        {
+            <div class="field" style="width:100px">
+                <label>@T("assets.anio")</label>
+                <input class="control" type="number" value="@_year" @onchange="async e => { if (int.TryParse(e.Value?.ToString(), out var y)) { _year = y; await ReloadAsync(); } }" />
+            </div>
+            <div class="field" style="width:auto">
+                <label>@T("assets.meses")</label>
+                <div style="display:flex;gap:6px">
+                    <select class="select" value="@_fromMonth" @onchange="async e => { _fromMonth = int.Parse(e.Value!.ToString()!); await ReloadAsync(); }">
+                        @for (var m = 1; m <= 12; m++)
+                        {
+                            var mesDesde = m;
+                            <option value="@mesDesde">@MonthName(mesDesde)</option>
+                        }
+                    </select>
+                    <select class="select" value="@_toMonth" @onchange="async e => { _toMonth = int.Parse(e.Value!.ToString()!); await ReloadAsync(); }">
+                        @for (var m = 1; m <= 12; m++)
+                        {
+                            var mesHasta = m;
+                            <option value="@mesHasta">@MonthName(mesHasta)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (_error is not null && _asset is null && _budget is null && _disposing is null)
+    {
+        <div class="alert warn"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+    }
+
+    @if (_tab == "assets")
+    {
+        <div class="card">
+            @if (_assets.Count == 0)
+            {
+                <div class="card-body"><span class="muted">@T("assets.sin_activos")</span></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>@T("assets.codigo")</th><th>@T("assets.activo")</th><th>@T("assets.alta")</th><th class="num">@T("assets.costo")</th>
+                                <th class="num">@T("assets.depreciacion_acumulada")</th><th class="num">@T("assets.valor_en_libros")</th><th class="num">@T("assets.cuota_mensual")</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fila in _assets)
+                            {
+                                var act = fila.Asset;
+                                <tr @key="act.Id">
+                                    <td>@act.Code</td>
+                                    <td><div class="two-line"><span class="t1">@act.Name</span><span class="t2">@T("assets.cat." + act.Category) · @T("assets.n_meses", act.UsefulLifeMonths)@(act.CostCenter is { } cc ? $" · {cc}" : "")</span></div></td>
+                                    <td>@Fmt.Date(act.AcquiredOn)</td>
+                                    <td class="num">@Money(act.Cost)</td>
+                                    <td class="num">@Money(fila.Accumulated)</td>
+                                    <td class="num"><strong>@Money(fila.BookValue)</strong></td>
+                                    <td class="num">@(fila.Disposed ? T("assets.de_baja", Fmt.Date(act.DisposedOn!.Value)) : fila.FullyDepreciated ? T("assets.depreciado") : Money(fila.MonthlyAmount))</td>
+                                    <td>
+                                        @if (!fila.Disposed && Session.Can(ErpPermissions.ManageAccounting))
+                                        {
+                                            <div style="display:flex;gap:6px;justify-content:flex-end">
+                                                <button class="btn btn-sm btn-ghost" @onclick="() => EditAsset(act)">@T("assets.editar")</button>
+                                                <button class="btn btn-sm btn-ghost" @onclick="() => StartDispose(act)">@T("assets.dar_de_baja")</button>
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-head"><h3>@T("assets.presupuesto_vs_real")</h3></div>
+            @if (_comparison.Count == 0)
+            {
+                <div class="card-body"><span class="muted">@T("assets.sin_presupuestos")</span></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>@T("assets.cuenta")</th><th>@T("assets.centro")</th><th class="num">@T("assets.presupuesto")</th><th class="num">@T("assets.real")</th>
+                                <th class="num">@T("assets.diferencia")</th><th class="num">%</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var linea in _comparison)
+                            {
+                                <tr @key="(linea.Code, linea.CostCenter)">
+                                    <td><div class="two-line"><span class="t1">@linea.Code · @linea.Name</span><span class="t2">@T(linea.Type == AccountType.Income ? "assets.ingreso" : "assets.gasto")</span></div></td>
+                                    <td>@(linea.CostCenter ?? "—")</td>
+                                    <td class="num">@Money(linea.Budget)</td>
+                                    <td class="num">@Money(linea.Actual)</td>
+                                    <td class="num @(linea.Favorable ? "good-text" : "warn-text")">@(linea.Variance > 0 ? "+" : "")@Money(linea.Variance)</td>
+                                    <td class="num">@(linea.Percent is { } pct ? $"{pct:0.#} %" : "—")</td>
+                                    <td>
+                                        @if (Session.Can(ErpPermissions.ManageAccounting))
+                                        {
+                                            <button class="btn btn-sm btn-ghost" @onclick="() => EditBudget(linea)">@T("assets.editar")</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_asset is { } fa)
+{
+    <Modal Title="@(fa.Id == Guid.Empty ? T("assets.nuevo_activo") : fa.Code)" Error="@_error" OnClose="() => _asset = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field"><label>@T("assets.codigo")</label><input class="control" @bind="fa.Code" /></div>
+                <div class="field"><label>@T("assets.activo")</label><input class="control" @bind="fa.Name" /></div>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("assets.categoria")</label>
+                    <select class="select" value="@fa.Category" @onchange="e => CategoryAsync(e.Value?.ToString())">
+                        @foreach (var cat in AssetCategories.All)
+                        {
+                            <option value="@cat">@T("assets.cat." + cat)</option>
+                        }
+                    </select>
+                </div>
+                <div class="field"><label>@T("assets.vida_util_meses")</label><input class="control" type="number" min="1" @bind="fa.Life" /></div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("assets.fecha_alta")</label><input class="control" type="date" @bind="fa.AcquiredOn" /></div>
+                <div class="field"><label>@T("assets.costo")</label><input class="control" type="number" min="0" step="0.01" @bind="fa.Cost" /></div>
+                <div class="field"><label>@T("assets.residual")</label><input class="control" type="number" min="0" step="0.01" @bind="fa.Residual" /></div>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("assets.centro")</label>
+                    <select class="select" @bind="fa.CostCenter">
+                        <option value="">—</option>
+                        @foreach (var centro in _centers)
+                        {
+                            <option value="@centro.Code">@centro.Code · @centro.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>@T("assets.origen")</label>
+                    <select class="select" @bind="fa.FromPurchase">
+                        <option value="true">@T("assets.de_una_compra")</option>
+                        <option value="false">@T("assets.saldo_inicial")</option>
+                    </select>
+                </div>
+            </div>
+            <span class="hint">@T("assets.vida_explica")</span>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _asset = null">@T("assets.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveAssetAsync">@T("assets.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_disposing is { } baja)
+{
+    <Modal Title="@(T("assets.dar_de_baja"))" Subtitle="@($"{baja.Code} · {baja.Name}")" Size="sm" Error="@_error" OnClose="() => _disposing = null">
+        <ChildContent>
+            <div class="field"><label>@T("assets.fecha_baja")</label><input class="control" type="date" @bind="_disposeOn" /></div>
+            <div class="field"><label>@T("assets.monto_venta")</label><input class="control" type="number" min="0" step="0.01" @bind="_proceeds" /></div>
+            <span class="hint">@T("assets.baja_explica")</span>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _disposing = null">@T("assets.cancelar")</button>
+            <button class="btn btn-dark" @onclick="ConfirmDisposeAsync">@T("assets.dar_de_baja")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_budget is { } bf)
+{
+    <Modal Title="@(T("assets.presupuesto_de", _year))" Size="lg" Error="@_error" OnClose="() => _budget = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("assets.cuenta")</label>
+                    <select class="select" @bind="bf.Account">
+                        <option value="">—</option>
+                        @foreach (var cuenta in _accounts.Where(a => a.Type is AccountType.Income or AccountType.Expense))
+                        {
+                            <option value="@cuenta.Code">@cuenta.Code · @cuenta.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>@T("assets.centro")</label>
+                    <select class="select" @bind="bf.Center">
+                        <option value="">—</option>
+                        @foreach (var centroP in _centers)
+                        {
+                            <option value="@centroP.Code">@centroP.Code · @centroP.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px">
+                @for (var i = 0; i < 12; i++)
+                {
+                    var mesIdx = i;
+                    <div class="field">
+                        <label>@MonthName(mesIdx + 1)</label>
+                        <input class="control" type="number" min="0" step="0.01" value="@bf.Months[mesIdx]"
+                               @onchange="e => bf.Months[mesIdx] = decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var mv) ? mv : 0" />
+                    </div>
+                }
+            </div>
+            <button class="btn btn-sm btn-ghost" style="align-self:flex-start" @onclick="() => { var first = bf.Months[0]; for (var k = 1; k < 12; k++) bf.Months[k] = first; }">@T("assets.repetir_enero")</button>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _budget = null">@T("assets.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveBudgetAsync">@T("assets.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class AssetForm
+    {
+        public Guid Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Category { get; set; } = AssetCategories.Computers;
+        public int Life { get; set; } = 48;
+        public DateOnly AcquiredOn { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public decimal Cost { get; set; }
+        public decimal Residual { get; set; }
+        public string? CostCenter { get; set; }
+        public bool FromPurchase { get; set; } = true;
+        public string? Notes { get; set; }
+
+        public FixedAsset ToAsset() => new(Id, Code, Name, Category, AcquiredOn, Cost, Residual, Life, FromPurchase,
+            string.IsNullOrWhiteSpace(CostCenter) ? null : CostCenter, Notes: Notes);
+    }
+
+    private sealed class BudgetForm
+    {
+        public string Account { get; set; } = "";
+        public string? Center { get; set; }
+        public decimal[] Months { get; set; } = new decimal[12];
+    }
+
+    private string _tab = "assets";
+    private string _currency = "PEN";
+    private IReadOnlyList<AssetRow> _assets = [];
+    private IReadOnlyList<BudgetLine> _comparison = [];
+    private IReadOnlyList<Budget> _budgets = [];
+    private IReadOnlyList<LedgerAccount> _accounts = [];
+    private IReadOnlyList<CostCenter> _centers = [];
+    private AssetForm? _asset;
+    private BudgetForm? _budget;
+    private FixedAsset? _disposing;
+    private DateOnly _disposeOn = DateOnly.FromDateTime(DateTime.Today);
+    private decimal _proceeds;
+    private int _year = DateTime.Today.Year, _fromMonth = 1, _toMonth = DateTime.Today.Month;
+    private string? _error;
+
+    private string Money(decimal value) => Fmt.Money(value, _currency);
+
+    private static string MonthName(int month) => Fmt.Culture.DateTimeFormat.GetAbbreviatedMonthName(month);
+
+    protected override async Task LoadAsync()
+    {
+        _error = null;
+        _currency = (await Erp.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        _centers = await Erp.Accounting.GetCostCentersAsync();
+        if (_tab == "assets")
+        {
+            _assets = await Erp.Assets.GetAssetsAsync();
+            return;
+        }
+        _accounts = await Erp.Accounting.GetAccountsAsync();
+        _budgets = await Erp.Assets.GetBudgetsAsync(_year);
+        try
+        {
+            _comparison = await Erp.Assets.CompareAsync(_year, _fromMonth, Math.Max(_fromMonth, _toMonth));
+        }
+        catch (ErpValidationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task NewAsset()
+    {
+        _error = null;
+        _asset = new AssetForm { Life = await Erp.Assets.SuggestedLifeAsync(AssetCategories.Computers) };
+    }
+
+    private void EditAsset(FixedAsset a)
+    {
+        _error = null;
+        _asset = new AssetForm
+        {
+            Id = a.Id, Code = a.Code, Name = a.Name, Category = a.Category, Life = a.UsefulLifeMonths, AcquiredOn = a.AcquiredOn, Cost = a.Cost,
+            Residual = a.Residual, CostCenter = a.CostCenter, FromPurchase = a.FromPurchase, Notes = a.Notes,
+        };
+    }
+
+    private async Task CategoryAsync(string? category)
+    {
+        if (_asset is not { } f || category is null)
+            return;
+        f.Category = category;
+        f.Life = await Erp.Assets.SuggestedLifeAsync(category);
+    }
+
+    private async Task SaveAssetAsync()
+    {
+        if (_asset is not { } f)
+            return;
+        _error = await TryAsync(() => Erp.Assets.SaveAssetAsync(f.ToAsset()), T("assets.guardado"));
+        if (_error is null)
+        {
+            _asset = null;
+            await ReloadAsync();
+        }
+    }
+
+    private void StartDispose(FixedAsset a) => (_disposing, _disposeOn, _proceeds, _error) = (a, DateOnly.FromDateTime(DateTime.Today), 0, null);
+
+    private async Task ConfirmDisposeAsync()
+    {
+        if (_disposing is not { } a)
+            return;
+        _error = await TryAsync(() => Erp.Assets.DisposeAssetAsync(a.Id, _disposeOn, _proceeds), T("assets.dado_de_baja"));
+        if (_error is null)
+        {
+            _disposing = null;
+            await ReloadAsync();
+        }
+    }
+
+    private void EditBudget(BudgetLine? line)
+    {
+        _error = null;
+        var existing = line is null ? null : _budgets.FirstOrDefault(b => b.AccountCode == line.Code && b.CostCenter == line.CostCenter);
+        _budget = new BudgetForm
+        {
+            Account = line?.Code ?? "", Center = line?.CostCenter,
+            Months = existing?.Months.ToArray() ?? new decimal[12],
+        };
+    }
+
+    private async Task SaveBudgetAsync()
+    {
+        if (_budget is not { } f)
+            return;
+        _error = await TryAsync(() => Erp.Assets.SaveBudgetAsync(_year, f.Account, f.Center, f.Months), T("assets.presupuesto_guardado"));
+        if (_error is null)
+        {
+            _budget = null;
+            await ReloadAsync();
+        }
+    }
+}

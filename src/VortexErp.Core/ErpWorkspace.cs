@@ -19,6 +19,7 @@ public sealed class ErpWorkspace
         Payables = new PayablesService(db, context, clock);
         Treasury = new TreasuryService(db, context, clock);
         Accounting = new AccountingService(db, context, clock);
+        Assets = new AssetService(db, context, clock);
         Orders = new OrderService(db, context, clock);
         Invoices = new InvoiceService(db, context, clock);
         Purchases = new PurchaseService(db, context, clock);
@@ -34,6 +35,7 @@ public sealed class ErpWorkspace
     public PayablesService Payables { get; }
     public TreasuryService Treasury { get; }
     public AccountingService Accounting { get; }
+    public AssetService Assets { get; }
     public OrderService Orders { get; }
     public InvoiceService Invoices { get; }
     public PurchaseService Purchases { get; }

@@ -324,5 +324,11 @@ internal static class Schema
         CREATE INDEX ix_inventory_movements_pending ON inventory_movements (entry_id, occurred_at);
         ALTER TABLE stock ADD COLUMN avg_cost REAL;
         """,
+        // 13: activos fijos y presupuestos (fase 6b), registros del ERP (gana el más nuevo).
+        """
+        CREATE TABLE fixed_assets (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE budgets (id TEXT PRIMARY KEY, year INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_budgets_year ON budgets (year);
+        """,
     ];
 }
