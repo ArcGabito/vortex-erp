@@ -42,7 +42,7 @@ public sealed class AccountingService(ErpDatabase db, IErpContext context, TimeP
         return await AccountsAsync(c, null);
     }
 
-    private static async Task<List<LedgerAccount>> AccountsAsync(SqliteConnection c, SqliteTransaction? tx)
+    internal static async Task<List<LedgerAccount>> AccountsAsync(SqliteConnection c, SqliteTransaction? tx)
     {
         var stored = await c.QueryAsync("SELECT * FROM ledger_accounts ORDER BY code",
             r => new LedgerAccount(r.Str("code"), r.Str("name"), Enum.Parse<AccountType>(r.Str("type")), r.Bool("is_active")), tx);
@@ -511,6 +511,12 @@ public sealed class AccountingService(ErpDatabase db, IErpContext context, TimeP
             foreach (var m in g)
                 await c.ExecAsync("UPDATE inventory_movements SET entry_id = $e WHERE id = $id", tx, ("$e", id), ("$id", m.Id));
         }
+
+        // Activos fijos (fase 6b): alta, depreciación de cada mes completo y baja.
+        foreach (var (id, date, source, reference, description, lines) in
+                 await AssetService.EntriesAsync(c, tx, DateOnly.FromDateTime(Clock.GetUtcNow().ToOffset(ErpClock.Offset).DateTime), Role))
+            if (!await PostedAsync(id))
+                await AddAsync(id, date, source, reference, description, lines);
 
         await tx.CommitAsync(ct);
         return created;

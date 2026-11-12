@@ -126,6 +126,12 @@ public static class ErpRecordKinds
     public const string AccountingSettings = "accounting_settings";
     public const string JournalEntry = "journal_entry";
     public const string CostCenter = "cost_center";
+
+    /// <summary>Activo fijo (fase 6b). Id: el del activo.</summary>
+    public const string FixedAsset = "fixed_asset";
+
+    /// <summary>Presupuesto anual de una cuenta (y centro). Id determinista: año + cuenta + centro.</summary>
+    public const string Budget = "budget";
 }
 
 /// <summary><c>erp.record.upserted</c>: la versión completa de un registro propio del ERP (gana el más nuevo por <c>UpdatedAt</c>).</summary>
