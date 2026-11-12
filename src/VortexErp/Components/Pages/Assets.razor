@@ -24,8 +24,8 @@
 
     <div class="filters">
         <div class="segmented">
-            <button class="@(_tab == "assets" ? "on" : "")" @onclick="async () => { _tab = "assets"; await ReloadAsync(); }">@T("assets.activos")</button>
-            <button class="@(_tab == "budgets" ? "on" : "")" @onclick="async () => { _tab = "budgets"; await ReloadAsync(); }">@T("assets.presupuestos")</button>
+            <button class="@(_tab == "assets" ? "on" : "")" @onclick="ShowAssetsAsync">@T("assets.activos")</button>
+            <button class="@(_tab == "budgets" ? "on" : "")" @onclick="ShowBudgetsAsync">@T("assets.presupuestos")</button>
         </div>
         @if (_tab == "budgets")
         {
@@ -255,7 +255,7 @@
                     </div>
                 }
             </div>
-            <button class="btn btn-sm btn-ghost" style="align-self:flex-start" @onclick="() => { var first = bf.Months[0]; for (var k = 1; k < 12; k++) bf.Months[k] = first; }">@T("assets.repetir_enero")</button>
+            <button class="btn btn-sm btn-ghost" style="align-self:flex-start" @onclick="() => RepeatFirst(bf)">@T("assets.repetir_enero")</button>
         </ChildContent>
         <Footer>
             <button class="btn" @onclick="() => _budget = null">@T("assets.cancelar")</button>
@@ -306,6 +306,24 @@
     private string? _error;
 
     private string Money(decimal value) => Fmt.Money(value, _currency);
+
+    private static void RepeatFirst(BudgetForm form)
+    {
+        for (var k = 1; k < 12; k++)
+            form.Months[k] = form.Months[0];
+    }
+
+    private async Task ShowAssetsAsync()
+    {
+        _tab = "assets";
+        await ReloadAsync();
+    }
+
+    private async Task ShowBudgetsAsync()
+    {
+        _tab = "budgets";
+        await ReloadAsync();
+    }
 
     private static string MonthName(int month) => Fmt.Culture.DateTimeFormat.GetAbbreviatedMonthName(month);
 
