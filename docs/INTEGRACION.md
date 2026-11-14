@@ -99,6 +99,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `cash.deposited` (POS) | El efectivo depositado sale de la caja y entra a la cuenta bancaria predeterminada de la moneda, para conciliarlo con el extracto (Ids deterministas por depósito) |
 | `purchase.requested` (WMS) | Sugerencia de compra del almacén: solicitud de compra **por aprobar** con el Id y el número del WMS, el proveedor, las cantidades y el costo promedio del almacén; la nota dice que la sugirió el almacén y para cuándo se necesita. Solo crea: si ya existe no se toca |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
+| `hub.fiscal.accepted`, `hub.fiscal.rejected` (hub, fase 7a) | Respuesta de SUNAT a un comprobante o nota electrónica del ERP (`product` = ERP), de este equipo o de otro: guarda el estado, el resumen de la firma y el texto del QR |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
 | Cambio de `party` (datos maestros) | Copia local del cliente con sus condiciones (`credit`: plazo, límite, descuento) |
 
@@ -126,3 +127,11 @@ prefijo (`PED-3F0C-000012`, `COB-…`, `OC-…`) y su propia serie de comprobant
 - Si un equipo anula un comprobante sin conexión mientras otro le registra un cobro, al sincronizar queda anulado con el
   cobro registrado: revisar en el estado de cuenta del cliente y devolver o aplicar el cobro.
 - Las ventas de caja con devoluciones no se facturan desde aquí: se emite el comprobante por lo que quedó desde un pedido.
+
+### Comprobante electrónico (fase 7a)
+
+El ERP no publica un evento nuevo: con el módulo `facturacion_electronica`, cada comprobante y nota se envía al hub con
+`POST api/fiscal/documents` (`IssueFiscalDocumentAsync`, `sourceId` = Id del comprobante o la nota, idempotente) tras cada
+sincronización. Serie: la que el ERP ya usaba por equipo (`F`/`B` + 3 caracteres del equipo); número: el correlativo del
+equipo. La respuesta llega como `hub.fiscal.accepted|rejected` a todos los equipos.
+

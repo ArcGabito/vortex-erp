@@ -53,6 +53,8 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
         .OnEvent(SuiteEvents.PurchaseRequested, HandlePurchaseRequestedAsync)
+        .OnEvent(SuiteEvents.FiscalAccepted, HandleFiscalResponseAsync)
+        .OnEvent(SuiteEvents.FiscalRejected, HandleFiscalResponseAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync);
 
     // ---------- Ventas: CRM, WMS, POS ----------
@@ -191,6 +193,17 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
                 return "ignorado: las órdenes de compra solo las cancela el ERP";
             await PurchaseService.ApplyCancelledAsync(c, tx, po);
             return null;
+        }, ct);
+
+    /// <summary>Respuesta de SUNAT a un comprobante del ERP (de este equipo o de otro): actualiza su estado.</summary>
+    public Task HandleFiscalResponseAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<VortexFiscalResponded>(e, async (r, c, tx) =>
+        {
+            if (e.Source != "HUB")
+                return "ignorado: la respuesta fiscal solo la publica el hub";
+            if (r.Product != FiscalService.ProductCode)
+                return "ignorado: comprobante de otro sistema";
+            return await FiscalService.ApplyResponseAsync(c, tx, e.OccurredAt, r) > 0 ? null : "comprobante desconocido";
         }, ct);
 
     /// <summary>Sugerencia de compra del WMS: queda como solicitud por aprobar con el mismo Id (ERP-26).</summary>

@@ -121,6 +121,8 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var e = new InvoiceIssued(id, number, customerId, saleId, orderId, now, total, currency, kind, subtotal, tax, dueDate, lines,
             Math.Min(paid, total), rate == 1m ? null : rate, shipmentId);
         await InsertInvoiceAsync(c, tx, e, "local", Context.UserName);
+        // Comprobante electrónico (fase 7a): numerado aquí; lo firma y lo envía el hub al sincronizar.
+        await new FiscalService(Db, Context, Clock).IssueForInvoiceAsync(c, tx, now, e, kind);
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceIssued, e, subjectType: "invoice", subjectId: number, id: id);
         await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", id, number, $"{(kind == InvoiceKinds.Invoice ? "Factura" : "Boleta")} por {total:0.##} {currency}");
         return (id, number);
@@ -311,6 +313,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         var e = new InvoiceNoteIssued(id, number, invoice.Id, invoice.Number, invoice.CustomerId, reason, now, invoice.CurrencyCode,
             breakdown.Net, breakdown.Tax, breakdown.Total, lines, Clean(description), invoice.SaleId, invoice.OrderId);
         await InsertNoteAsync(c, tx, kind, e, "local", Context.UserName);
+        await new FiscalService(Db, Context, Clock).IssueForNoteAsync(c, tx, now, e, kind);
         await Outbox.EnqueueEventAsync(c, tx, now, kind == NoteKinds.Credit ? SuiteEvents.CreditNoteIssued : SuiteEvents.DebitNoteIssued, e,
             subjectType: "invoice", subjectId: invoice.Number, id: id);
         await AuditAsync(c, tx, now, AuditActions.Issued, "invoice", invoice.Id, number,
@@ -353,6 +356,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
             Require(invoice.CanVoid, T("error.tiene_cobros_o_notas_emite_nota"));
+            await FiscalService.RequireNotElectronicAsync(c, tx, invoiceId);
             var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId, invoice.CustomerId);
             await MarkVoidedAsync(c, tx, now, e);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
@@ -768,7 +772,7 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
     private static Task<InvoiceRow?> GetAsync(SqliteConnection c, SqliteTransaction? tx, Guid id) =>
         c.FirstOrDefaultAsync($"{Select} WHERE i.id = $id", Read, tx, ("$id", id));
 
-    private static InvoiceRow Read(SqliteDataReader r) => new(
+    internal static InvoiceRow Read(SqliteDataReader r) => new(
         r.Guid("id"), r.Str("number"), r.Str("kind"), r.Str("origin"), r.GuidOrNull("customer_id"), r.StrOrNull("customer_name"),
         r.StrOrNull("customer_document"), r.GuidOrNull("order_id"), r.GuidOrNull("sale_id"), r.Time("issued_at"),
         r.StrOrNull("due_date") is { } d ? DateOnly.Parse(d, System.Globalization.CultureInfo.InvariantCulture) : null,

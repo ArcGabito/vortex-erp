@@ -73,6 +73,17 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
 
     public bool Can(string permission) => ErpPermissions.Matrix.Can(Session?.Access.Role, Session?.User.Role, permission);
 
+    /// <summary>Módulos contratados en el hub (p. ej. facturación electrónica).</summary>
+    public IReadOnlyList<string> Features => Session?.Access.Features ?? [];
+
+    /// <summary>Envía los comprobantes electrónicos al hub con el token de la sesión.</summary>
+    public IFiscalGateway FiscalGateway => new HubFiscalGateway(this);
+
+    internal Task<T> WithHubAsync<T>(Func<VortexApiClient, string, Task<T>> call) =>
+        _sessions is { } sessions && _client is { } client
+            ? sessions.WithAccessTokenAsync(token => call(client, token))
+            : throw new HttpRequestException("Sin sesión con el hub.");
+
     public Guid? UserId => Session?.User.Id;
     public string UserName => Session?.User.FullName ?? "";
     public string DeviceTag => DeviceIdentity.Tag(_deviceId);
@@ -312,12 +323,15 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
                 _lastSyncAt = DateTimeOffset.Now;
                 _lastError = null;
                 SetConnection(ConnectionState.Online);
+                // Comprobantes electrónicos emitidos en este equipo (también sin conexión) que el hub aún no recibió.
+                if (await Workspace!.Fiscal.SendPendingAsync(FiscalGateway, ct) > 0)
+                    hadData = true;
             }
             else
             {
                 await GoOfflineAsync(ct);
             }
-            hadData = result.PulledChanges + result.PulledEvents + result.Failed > 0;
+            hadData |= result.PulledChanges + result.PulledEvents + result.Failed > 0;
         }
         catch (VortexSyncException ex)
         {
@@ -450,4 +464,14 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
     }
 
     public async ValueTask DisposeAsync() => await StopAsync();
+}
+
+/// <summary>Comprobantes electrónicos por el hub (<c>api/fiscal/documents</c>) con el token de la sesión.</summary>
+internal sealed class HubFiscalGateway(AppSession session) : IFiscalGateway
+{
+    public Task<VortexFiscalDocument> IssueAsync(VortexFiscalRequest request, CancellationToken ct = default) =>
+        session.WithHubAsync((client, token) => client.IssueFiscalDocumentAsync(token, request, ct));
+
+    public Task<VortexFiscalDocument> RetryAsync(Guid hubId, CancellationToken ct = default) =>
+        session.WithHubAsync((client, token) => client.RetryFiscalDocumentAsync(token, hubId, ct));
 }

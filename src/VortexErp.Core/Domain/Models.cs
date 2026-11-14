@@ -18,6 +18,9 @@ public interface IErpContext
     /// <summary>Rol efectivo del usuario en el ERP (<see cref="ErpPermissions"/>).</summary>
     string Role { get; }
 
+    /// <summary>Módulos contratados en el hub para el ERP (<c>Access.Features</c>), p. ej. <c>facturacion_electronica</c>.</summary>
+    IReadOnlyList<string> Features => [];
+
     /// <summary>Si el usuario puede hacer la acción (<see cref="ErpPermissions"/>).</summary>
     bool Can(string permission);
 }

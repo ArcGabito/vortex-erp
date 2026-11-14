@@ -1,5 +1,6 @@
 @page "/comprobantes"
 @inherits ErpPage
+@inject FileExporter Exporter
 
 <SectionContent SectionName="page-title">@T("invoices.comprobantes_2")</SectionContent>
 
@@ -10,6 +11,14 @@
             <p>@T("invoices.facturas_boletas_emitidas_desde_pedidos")</p>
         </div>
     </div>
+
+    @if (_fiscalSetup is { } setup && Session.Features.Contains(VortexErp.Core.Services.FiscalService.Feature, StringComparer.OrdinalIgnoreCase))
+    {
+        <div class="alert @(setup.Enabled ? "info" : "warn")" style="margin-bottom:16px">
+            <Icon Name="@(setup.Enabled ? "check" : "alert")" Size="18" />
+            <span>@(setup.Enabled ? T("fiscal.emision_activa") : T("fiscal.emision_inactiva", setup.Reason ?? ""))@(_fiscalPending > 0 ? " " + T("fiscal.n_por_revisar", _fiscalPending) : "")</span>
+        </div>
+    }
 
     <div class="filters">
         <div class="field" style="width:auto">
@@ -107,7 +116,7 @@
                         {
                             var (text, tone) = StatusPill.ForInvoice(i, Fmt.Today);
                             <tr @key="i.Id" style="cursor:pointer" @onclick="() => OpenAsync(i)">
-                                <td><div class="two-line"><span class="t1">@i.Number</span><span class="t2">@Fmt.InvoiceKind(i.Kind) · @Fmt.Date(i.IssuedAt)</span></div></td>
+                                <td><div class="two-line"><span class="t1">@i.Number</span><span class="t2">@Fmt.InvoiceKind(i.Kind) · @Fmt.Date(i.IssuedAt)@(_fiscal.GetValueOrDefault(i.Id) is { } sunat ? $" · SUNAT: {T("fiscal.estado." + sunat)}" : "")</span></div></td>
                                 <td><div class="two-line"><span class="t1" style="font-weight:600">@(i.CustomerName ?? T("invoices.clientes_varios"))</span><span class="t2">@i.CustomerDocument</span></div></td>
                                 <td><span class="muted">@(i.DueDate is { } due ? Fmt.Date(due) : "—")</span></td>
                                 <td class="num">@Fmt.Money(i.Total, i.CurrencyCode)</td>
@@ -213,9 +222,27 @@
                     }
                 </div>
             }
+            @if (_fiscalDocs.Count > 0)
+            {
+                <div class="field-label" style="margin-top:12px">@T("fiscal.comprobante_electronico")</div>
+                @foreach (var fd in _fiscalDocs)
+                {
+                    <div class="list-row" @key="fd.Id">
+                        <div class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@fd.FullNumber · @T("fiscal.estado." + fd.Status)</span>
+                            <span class="t2">@(fd.LastError ?? fd.ResponseDescription ?? fd.Notes ?? (fd.Hash is { } hashFd ? $"{T("pdf.resumen")}: {hashFd}" : ""))</span>
+                        </div>
+                        @if (fd.Local && fd.Status is FiscalStatuses.Failed or FiscalStatuses.Error && Session.Can(ErpPermissions.IssueInvoice))
+                        {
+                            <button class="btn btn-sm" disabled="@_busy" @onclick="() => RetryFiscalAsync(fd.Id)"><Icon Name="sync" Size="16" />@T("fiscal.reintentar")</button>
+                        }
+                    </div>
+                }
+            }
         </ChildContent>
         <Footer>
-            @if (!d.IsVoided && Session.Can(ErpPermissions.VoidInvoice) && d.CanVoid)
+            <button class="btn btn-ghost" style="margin-right:auto" @onclick="() => PdfAsync(d)"><Icon Name="download" Size="18" />@T("invoices.pdf")</button>
+            @if (!d.IsVoided && Session.Can(ErpPermissions.VoidInvoice) && d.CanVoid && _fiscalDocs.All(x => x.Id != d.Id))
             {
                 <button class="btn btn-danger" @onclick="() => StartVoid(d)"><Icon Name="ban" Size="18" />@T("invoices.anular")</button>
             }
@@ -466,7 +493,42 @@
         else
             _result = await Erp.Invoices.GetInvoicesAsync(new InvoiceQuery(_search, _kind == "" ? null : _kind, _unpaid, Page: _page));
         if (_detail is { } open)
+        {
             _detail = await Erp.Invoices.GetAsync(open.Id);
+            _fiscalDocs = await Erp.Fiscal.GetForInvoiceAsync(open.Id);
+        }
+        _fiscalSetup = await Erp.Fiscal.GetSetupAsync();
+        _fiscalPending = (await Erp.Fiscal.GetOutstandingAsync()).Count(x => x.Status is not FiscalStatuses.Pending);
+        _fiscal = _result is { } listed ? await Erp.Fiscal.GetStatusesAsync(listed.Items.Select(x => x.Id)) : new Dictionary<Guid, string>();
+    }
+
+    // ---------- Comprobante electrónico (fase 7a) ----------
+
+    private FiscalSetup? _fiscalSetup;
+    private int _fiscalPending;
+    private IReadOnlyDictionary<Guid, string> _fiscal = new Dictionary<Guid, string>();
+    private IReadOnlyList<FiscalDocumentRow> _fiscalDocs = [];
+
+    private async Task RetryFiscalAsync(Guid id)
+    {
+        _busy = true;
+        await RunAsync(() => Erp.Fiscal.RetryAsync(Session.FiscalGateway, id), T("fiscal.reenviado"));
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task PdfAsync(InvoiceRow invoice)
+    {
+        try
+        {
+            var bytes = await Erp.Fiscal.InvoicePdfAsync(invoice.Id, Fmt.Culture);
+            var path = await Exporter.ExportBytesAsync($"{invoice.Number}.pdf", bytes, "application/pdf");
+            Toasts.Success(T("invoices.pdf_guardado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)
@@ -490,6 +552,7 @@
         _lines = await Erp.Invoices.GetLinesAsync(invoice.Id);
         _payments = (await Erp.Invoices.GetPaymentsAsync(invoice.Id, 1, 50)).Items;
         _notes = await Erp.Invoices.GetNotesAsync(invoice.Id);
+        _fiscalDocs = await Erp.Fiscal.GetForInvoiceAsync(invoice.Id);
         _detail = invoice;
     }
 

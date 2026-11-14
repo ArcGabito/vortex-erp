@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Comprobante electrónico de Perú (fase 7a):** facturas, boletas y notas del ERP se firman y envían a SUNAT por el hub,
+  con la serie de cada equipo, cola sin conexión, estado y reintento en Comprobantes, nota de crédito en lugar de anular y
+  la representación impresa en PDF con QR.
 - **Activos y presupuestos (fase 6b):** activos fijos con depreciación mensual en línea recta a la tasa máxima del país,
   alta y baja con sus asientos; presupuestos por cuenta y centro de costo comparados con lo real.
 - **Costos (fase 6a):** inventario valorizado al costo promedio del WMS y asientos diarios de inventario: entradas contra

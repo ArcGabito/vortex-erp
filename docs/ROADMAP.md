@@ -103,7 +103,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| ERP-75 | Perú: factura, boleta y notas UBL 2.1 vía OSE, resumen diario, baja, PLE | Pendiente | 7 |
+| ERP-75 | Perú: factura, boleta y notas UBL 2.1 vía OSE, resumen diario, baja, PLE | Parcial: factura, boleta y notas por el hub a SUNAT | 7a |
 | ERP-76 | México: CFDI 4.0 con complemento de pago vía PAC | Pendiente | 7 |
 | ERP-77 | Colombia (DIAN), Chile (SII), Ecuador (SRI), Brasil (NF-e) | Pendiente | 7 |
 | ERP-78 | EE. UU.: sales tax por estado; UE: IVA intracomunitario y factura electrónica | Pendiente | 7 |
@@ -327,6 +327,19 @@ El paquete de localización vive en `VortexApi.Suite` y lo comparte el POS.
 
 **Terminado cuando:** una factura, una boleta y una nota de crédito quedan aceptadas por la OSE y el PLE del mes pasa
 el validador de SUNAT.
+
+**Estado 7a (2026-11):** hecha. Decisión: el paquete de localización vive en el hub (vortex-api#42 y #43), igual que
+para el POS, y se envía directo a SUNAT (la OSE queda como opción para quien la necesite). Con el módulo
+`facturacion_electronica` y una empresa peruana con RUC válido, cada factura, boleta, nota de crédito y nota de débito
+del ERP se arma como comprobante electrónico **en la misma transacción**, con la serie que el ERP ya usaba por equipo (F o B
++ 3 caracteres del equipo), así dos equipos sin conexión nunca repiten número. Queda en cola y se envía al hub tras cada
+sincronización; el hub la firma y la envía a SUNAT, y la respuesta (`hub.fiscal.accepted|rejected`) llega a todos los
+equipos. Reglas antes de numerar: factura solo a RUC válido, boleta desde S/ 700 con documento. Factura al crédito con su
+cuota al vencimiento. Notas con referencia al comprobante y motivo del catálogo 9 o 10. Un comprobante electrónico no se
+anula: se emite la nota de crédito por anulación (motivo 01). Comprobantes muestra el estado ante SUNAT, reintenta los que
+fallaron y descarga la **representación impresa en PDF** con el QR (QRCoder) y el resumen de la firma. Pruebas en
+`FiscalTests`. Siguen: 7b en el hub (comunicación de baja, resumen diario, consulta del CDR), 7c (registros de ventas y
+compras del SIRE y libro diario del PLE) y 7d (detracciones, retenciones y percepciones).
 
 ## Fase 8: escala · L
 
