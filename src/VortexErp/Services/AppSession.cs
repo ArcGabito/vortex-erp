@@ -474,4 +474,7 @@ internal sealed class HubFiscalGateway(AppSession session) : IFiscalGateway
 
     public Task<VortexFiscalDocument> RetryAsync(Guid hubId, CancellationToken ct = default) =>
         session.WithHubAsync((client, token) => client.RetryFiscalDocumentAsync(token, hubId, ct));
+
+    public Task<VortexFiscalVoid> VoidAsync(Guid sourceId, string reason, CancellationToken ct = default) =>
+        session.WithHubAsync((client, token) => client.VoidFiscalDocumentAsync(token, sourceId, reason, ct));
 }

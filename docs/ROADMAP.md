@@ -341,6 +341,13 @@ fallaron y descarga la **representación impresa en PDF** con el QR (QRCoder) y 
 `FiscalTests`. Siguen: 7b en el hub (comunicación de baja, resumen diario, consulta del CDR), 7c (registros de ventas y
 compras del SIRE y libro diario del PLE) y 7d (detracciones, retenciones y percepciones).
 
+**Estado 7b (2026-11):** hecha con vortex-api#48. "Anular" un comprobante electrónico ya aceptado por SUNAT, dentro de
+los 7 días desde su emisión y sin cobros ni notas, pide la baja al hub (comunicación de baja para facturas, resumen
+diario para boletas); el comprobante sigue vigente ("anulación en curso") hasta que llega `hub.fiscal.voided`, y entonces
+queda anulado en todos los equipos y el que la pidió publica `invoice.voided` (Id determinista). Si SUNAT la rechaza
+(`hub.fiscal.void_rejected`) sigue vigente. Pasados los 7 días o con cobros, se corrige con una nota de crédito por
+anulación. Pruebas en `FiscalTests`.
+
 ## Fase 8: escala · L
 
 ERP-68, ERP-69 (aprobaciones configurables y segregación de funciones), ERP-85 (multiempresa y consolidación),

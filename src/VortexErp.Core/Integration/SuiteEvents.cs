@@ -38,6 +38,8 @@ public static class SuiteEvents
     /// <summary>Respuesta de SUNAT a un comprobante electrónico que el hub firmó y envió (fase 7a).</summary>
     public const string FiscalAccepted = VortexApi.Client.VortexHubEvents.FiscalAccepted;
     public const string FiscalRejected = VortexApi.Client.VortexHubEvents.FiscalRejected;
+    public const string FiscalVoided = VortexApi.Client.VortexHubEvents.FiscalVoided;
+    public const string FiscalVoidRejected = VortexApi.Client.VortexHubEvents.FiscalVoidRejected;
     public const string StockAdjusted = "stock.adjusted";
     public const string ShipmentDispatched = "shipment.dispatched";
 

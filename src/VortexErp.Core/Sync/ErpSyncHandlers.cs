@@ -55,6 +55,8 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
         .OnEvent(SuiteEvents.PurchaseRequested, HandlePurchaseRequestedAsync)
         .OnEvent(SuiteEvents.FiscalAccepted, HandleFiscalResponseAsync)
         .OnEvent(SuiteEvents.FiscalRejected, HandleFiscalResponseAsync)
+        .OnEvent(SuiteEvents.FiscalVoided, HandleFiscalVoidAsync)
+        .OnEvent(SuiteEvents.FiscalVoidRejected, HandleFiscalVoidAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync);
 
     // ---------- Ventas: CRM, WMS, POS ----------
@@ -204,6 +206,23 @@ public sealed class ErpSyncHandlers(ErpDatabase db, MasterDataService master, Ti
             if (r.Product != FiscalService.ProductCode)
                 return "ignorado: comprobante de otro sistema";
             return await FiscalService.ApplyResponseAsync(c, tx, e.OccurredAt, r) > 0 ? null : "comprobante desconocido";
+        }, ct);
+
+    /// <summary>
+    /// Respuesta de SUNAT a una anulación (fase 7b): aceptada, el comprobante queda anulado en todos los equipos (el que la
+    /// pidió publica <c>invoice.voided</c>); rechazada, sigue vigente.
+    /// </summary>
+    public Task HandleFiscalVoidAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<VortexFiscalVoidResponded>(e, async (r, c, tx) =>
+        {
+            if (e.Source != "HUB")
+                return "ignorado: la respuesta fiscal solo la publica el hub";
+            if (r.Product != FiscalService.ProductCode)
+                return "ignorado: comprobante de otro sistema";
+            var (updated, local) = await FiscalService.ApplyVoidResponseAsync(c, tx, e.OccurredAt, r);
+            if (r.Voided)
+                await InvoiceService.ApplyElectronicVoidAsync(c, tx, e.OccurredAt, r.SourceId, publish: local);
+            return updated > 0 ? null : "comprobante desconocido";
         }, ct);
 
     /// <summary>Sugerencia de compra del WMS: queda como solicitud por aprobar con el mismo Id (ERP-26).</summary>

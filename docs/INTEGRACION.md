@@ -99,6 +99,7 @@ crédito es distinta de la factura `F3F0-000001`).
 | `cash.deposited` (POS) | El efectivo depositado sale de la caja y entra a la cuenta bancaria predeterminada de la moneda, para conciliarlo con el extracto (Ids deterministas por depósito) |
 | `purchase.requested` (WMS) | Sugerencia de compra del almacén: solicitud de compra **por aprobar** con el Id y el número del WMS, el proveedor, las cantidades y el costo promedio del almacén; la nota dice que la sugirió el almacén y para cuándo se necesita. Solo crea: si ya existe no se toca |
 | `invoice.issued`, `payment.received`, `purchase_order.created`, `credit_note.issued`, `debit_note.issued`, `invoice.voided` (otro equipo ERP) | Ver abajo |
+| `hub.fiscal.voided`, `hub.fiscal.void_rejected` (hub, fase 7b) | Respuesta de SUNAT a la baja de un comprobante del ERP: aceptada, queda anulado (el equipo que la pidió publica `invoice.voided`); rechazada, sigue vigente |
 | `hub.fiscal.accepted`, `hub.fiscal.rejected` (hub, fase 7a) | Respuesta de SUNAT a un comprobante o nota electrónica del ERP (`product` = ERP), de este equipo o de otro: guarda el estado, el resumen de la firma y el texto del QR |
 | Cambio de `exchange_rate` (datos maestros) | Copia local de los tipos de cambio para emitir y cobrar en otras monedas sin conexión |
 | Cambio de `party` (datos maestros) | Copia local del cliente con sus condiciones (`credit`: plazo, límite, descuento) |

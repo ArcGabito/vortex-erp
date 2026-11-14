@@ -344,5 +344,11 @@ internal static class Schema
         ALTER TABLE items ADD COLUMN unit_code TEXT;
         DELETE FROM sync_cursors WHERE stream = 'master';
         """,
+        // 15: anulación electrónica (fase 7b). El pedido de baja de este equipo (motivo y si ya se envió al hub) y en qué quedó.
+        """
+        ALTER TABLE fiscal_documents ADD COLUMN void_reason TEXT;
+        ALTER TABLE fiscal_documents ADD COLUMN void_state TEXT;
+        ALTER TABLE fiscal_documents ADD COLUMN void_message TEXT;
+        """,
     ];
 }

@@ -116,13 +116,49 @@ public sealed class FiscalService(ErpDatabase db, IErpContext context, TimeProvi
         await InsertLocalAsync(c, tx, now, request, e.InvoiceId);
     }
 
+    /// <summary>Días para anular por comunicación de baja o resumen diario, desde la emisión.</summary>
+    public const int VoidWindowDays = 7;
+
     /// <summary>
-    /// Un comprobante electrónico no se anula borrándolo: SUNAT ya lo tiene (o lo tendrá al sincronizar). Se corrige con una
-    /// nota de crédito por anulación (motivo 01).
+    /// Anulación de un comprobante electrónico (fase 7b): si SUNAT ya lo aceptó y no pasaron <see cref="VoidWindowDays"/> días,
+    /// se pide la baja al hub (queda "anulación en curso" y el comprobante se anula al llegar <c>hub.fiscal.voided</c>);
+    /// si no, se corrige con una nota de crédito por anulación (motivo 01). Devuelve true si el comprobante es electrónico
+    /// (la anulación sigue por el hub) y false si no lo es (se anula como antes).
     /// </summary>
-    internal static async Task RequireNotElectronicAsync(SqliteConnection c, SqliteTransaction tx, Guid invoiceId) =>
-        Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM fiscal_documents WHERE id = $id", tx, ("$id", invoiceId)) == 0,
-            T("fiscal.anular_con_nota"));
+    internal static async Task<bool> RequestVoidAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid invoiceId, string reason)
+    {
+        var doc = await c.FirstOrDefaultAsync("SELECT status, void_state, created_at FROM fiscal_documents WHERE id = $id",
+            r => new { Status = r.Str("status"), Void = r.StrOrNull("void_state"), Created = r.Time("created_at") }, tx, ("$id", invoiceId));
+        if (doc is null)
+            return false;
+        Require(doc.Void is not (FiscalVoidStates.Requested or FiscalVoidStates.Sent), T("fiscal.anulacion_en_curso"));
+        Require(FiscalStatuses.IsValid(doc.Status), T("fiscal.anular_cuando_acepte"));
+        var issued = DateOnly.FromDateTime(doc.Created.ToOffset(ErpClock.Offset).DateTime);
+        var today = DateOnly.FromDateTime(now.ToOffset(ErpClock.Offset).DateTime);
+        Require(today.DayNumber - issued.DayNumber <= VoidWindowDays, T("fiscal.anular_con_nota", VoidWindowDays));
+        await c.ExecAsync("""
+            UPDATE fiscal_documents SET void_reason = $reason, void_state = 'requested', void_message = NULL, updated_at = $now WHERE id = $id
+            """, tx, ("$id", invoiceId), ("$reason", Truncate(reason, 100)), ("$now", now));
+        return true;
+    }
+
+    /// <summary>
+    /// Respuesta de SUNAT a una anulación (<c>hub.fiscal.voided|void_rejected</c>). Aceptada: el comprobante queda anulado y,
+    /// en el equipo que la pidió, se publica <c>invoice.voided</c> (con Id determinista, igual en todos). Devuelve el
+    /// comprobante si este equipo debe anularlo.
+    /// </summary>
+    internal static async Task<(int Updated, bool Local)> ApplyVoidResponseAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at,
+        VortexFiscalVoidResponded r)
+    {
+        var local = await c.ScalarAsync<string?>("SELECT void_state FROM fiscal_documents WHERE id = $id", tx, ("$id", r.SourceId)) is not null;
+        var updated = await c.ExecAsync("""
+            UPDATE fiscal_documents SET void_state = $state, void_message = $message, status = CASE WHEN $voided = 1 THEN 'voided' ELSE status END,
+                updated_at = $at
+            WHERE id = $id
+            """, tx, ("$id", r.SourceId), ("$state", r.Voided ? FiscalVoidStates.Accepted : FiscalVoidStates.Rejected),
+            ("$message", Truncate($"{r.ResponseCode} {r.ResponseDescription}".Trim(), 500)), ("$voided", r.Voided), ("$at", at));
+        return (updated, local);
+    }
 
     /// <summary>Motivo del ERP al código de SUNAT: catálogo 9 (notas de crédito) y 10 (notas de débito).</summary>
     public static string ReasonCode(string reason) => reason switch
@@ -264,6 +300,36 @@ public sealed class FiscalService(ErpDatabase db, IErpContext context, TimeProvi
                 break;
             }
         }
+        // Anulaciones pedidas en este equipo (fase 7b).
+        var voids = await c.QueryAsync("SELECT id, void_reason FROM fiscal_documents WHERE void_state = 'requested' AND sent = 1",
+            r => (Id: r.Guid("id"), Reason: r.Str("void_reason")));
+        foreach (var (id, reason) in voids)
+        {
+            var now = Clock.GetUtcNow();
+            try
+            {
+                var request = await gateway.VoidAsync(id, reason, ct);
+                var state = request.Status switch
+                {
+                    VortexFiscalVoidStatus.Accepted => FiscalVoidStates.Accepted,
+                    VortexFiscalVoidStatus.Rejected or VortexFiscalVoidStatus.Failed => FiscalVoidStates.Rejected,
+                    _ => FiscalVoidStates.Sent,
+                };
+                await c.ExecAsync("UPDATE fiscal_documents SET void_state = $state, void_message = $msg, updated_at = $now WHERE id = $id", null,
+                    ("$id", id), ("$state", state), ("$msg", request.SummaryId), ("$now", now));
+                sent++;
+            }
+            catch (VortexApiException ex) when (ex.StatusCode is 400 or 404 or 409)
+            {
+                // Fuera de plazo o no anulable: queda vigente; se corrige con una nota de crédito.
+                await c.ExecAsync("UPDATE fiscal_documents SET void_state = 'rejected', void_message = $msg, updated_at = $now WHERE id = $id", null,
+                    ("$id", id), ("$msg", Truncate(ex.Message, 500)), ("$now", now));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or VortexApiException && !ct.IsCancellationRequested)
+            {
+                break;
+            }
+        }
         return sent;
     }
 
@@ -318,14 +384,14 @@ public sealed class FiscalService(ErpDatabase db, IErpContext context, TimeProvi
     {
         await using var c = await Db.OpenAsync(ct);
         return await c.QueryAsync("""
-            SELECT * FROM fiscal_documents WHERE status NOT IN ('accepted', 'observed') ORDER BY created_at DESC LIMIT 200
+            SELECT * FROM fiscal_documents WHERE status NOT IN ('accepted', 'observed', 'voided') ORDER BY created_at DESC LIMIT 200
             """, Read);
     }
 
     private static FiscalDocumentRow Read(SqliteDataReader r) => new(
         r.Guid("id"), r.Str("kind"), r.Str("series"), r.Long("number"), r.GuidOrNull("invoice_id"), r.Str("status"), r.StrOrNull("hash"),
         r.StrOrNull("qr"), r.StrOrNull("response_code"), r.StrOrNull("response_description"), r.StrOrNull("notes"), r.StrOrNull("last_error"),
-        r.StrOrNull("request") is not null, r.Bool("sent"), r.Time("created_at"));
+        r.StrOrNull("request") is not null, r.Bool("sent"), r.Time("created_at"), r.StrOrNull("void_state"), r.StrOrNull("void_message"));
 
     /// <summary>Código de tipo de comprobante de SUNAT (catálogo 1).</summary>
     public static string TypeCode(string kind) => kind switch

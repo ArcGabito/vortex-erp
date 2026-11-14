@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Anulación electrónica (fase 7b):** anular un comprobante aceptado dentro de los 7 días pide la baja a SUNAT por el
+  hub; se anula al llegar `hub.fiscal.voided` (o sigue vigente si se rechaza).
 - **Comprobante electrónico de Perú (fase 7a):** facturas, boletas y notas del ERP se firman y envían a SUNAT por el hub,
   con la serie de cada equipo, cola sin conexión, estado y reintento en Comprobantes, nota de crédito en lugar de anular y
   la representación impresa en PDF con QR.
