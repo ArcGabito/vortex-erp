@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <!-- PDF del estado de cuenta, sin dependencias nativas (el mismo que usa el CRM para sus cotizaciones). -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- Código QR de la representación impresa del comprobante electrónico (MIT, sin dependencias nativas). -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <!-- PDFsharp trae System.Security.Cryptography.Pkcs 8.0.1, con vulnerabilidades conocidas: se fuerza la versión corregida. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <!-- SDK del hub desde el feed local (ver nuget.config y scripts/pack-sdk.*): siempre la versión más alta. -->

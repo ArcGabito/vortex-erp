@@ -330,5 +330,19 @@ internal static class Schema
         CREATE TABLE budgets (id TEXT PRIMARY KEY, year INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE INDEX ix_budgets_year ON budgets (year);
         """,
+        // 14: comprobante electrónico (fase 7a). El de cada comprobante y nota (Id = el del documento): los de este equipo con
+        // el pedido para el hub (request) hasta enviarlo; los de otros equipos llegan con la respuesta (hub.fiscal.*). La
+        // unidad UN/ECE del artículo (se vuelve a leer el feed de datos maestros).
+        """
+        CREATE TABLE fiscal_documents (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, series TEXT NOT NULL, number INTEGER NOT NULL, invoice_id TEXT, request TEXT,
+            sent INTEGER NOT NULL DEFAULT 0, hub_id TEXT, status TEXT NOT NULL, hash TEXT, qr TEXT, response_code TEXT,
+            response_description TEXT, notes TEXT, last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE UNIQUE INDEX ux_fiscal_number ON fiscal_documents (kind, series, number);
+        CREATE INDEX ix_fiscal_invoice ON fiscal_documents (invoice_id);
+        CREATE INDEX ix_fiscal_pending ON fiscal_documents (sent) WHERE request IS NOT NULL;
+        ALTER TABLE items ADD COLUMN unit_code TEXT;
+        DELETE FROM sync_cursors WHERE stream = 'master';
+        """,
     ];
 }

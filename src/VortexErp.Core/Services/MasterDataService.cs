@@ -25,17 +25,17 @@ public sealed partial class MasterDataService(ErpDatabase db, IErpContext contex
         await using var c = await Db.OpenAsync(ct);
         await c.ExecAsync("""
             INSERT INTO items (id, sku, name, kind, description, unit, barcode, category, price, currency_code, tax_code,
-                               track_inventory, is_active, version, is_deleted, pending, updated_at)
+                               track_inventory, is_active, version, is_deleted, pending, updated_at, unit_code)
             VALUES ($id, $sku, $name, $kind, $desc, $unit, $barcode, $category, $price, $currency, $tax, $track, $active,
-                    $version, $deleted, 0, $updated)
+                    $version, $deleted, 0, $updated, $unitCode)
             ON CONFLICT (id) DO UPDATE SET
                 sku = excluded.sku, name = excluded.name, kind = excluded.kind, description = excluded.description,
                 unit = excluded.unit, barcode = excluded.barcode, category = excluded.category, price = excluded.price,
                 currency_code = excluded.currency_code, tax_code = excluded.tax_code,
                 track_inventory = excluded.track_inventory, is_active = excluded.is_active, version = excluded.version,
-                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at
-            WHERE excluded.version > items.version
-            """, null, ("$id", change.EntityId), ("$sku", d.Sku), ("$name", d.Name), ("$kind", d.Kind), ("$desc", d.Description),
+                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at, unit_code = excluded.unit_code
+            WHERE excluded.version > items.version OR (excluded.version = items.version AND items.unit_code IS NOT excluded.unit_code)
+            """, null, ("$unitCode", d.UnitCode), ("$id", change.EntityId), ("$sku", d.Sku), ("$name", d.Name), ("$kind", d.Kind), ("$desc", d.Description),
             ("$unit", d.Unit), ("$barcode", d.Barcode), ("$category", d.Category), ("$price", d.Price),
             ("$currency", d.CurrencyCode), ("$tax", d.TaxCode), ("$track", d.TrackInventory), ("$active", d.IsActive),
             ("$version", change.Version), ("$deleted", Deleted(change.Operation, d.Meta)), ("$updated", d.Meta.UpdatedAt));

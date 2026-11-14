@@ -87,6 +87,7 @@ public sealed class TestWorkspace(string deviceTag = "TEST", string role = "admi
         public Guid? DefaultSiteId => site;
         public IReadOnlyList<Guid> SiteIds { get; set; } = [];
         public string Role { get; set; } = role;
+        public IReadOnlyList<string> Features { get; set; } = [];
         public bool Can(string permission) => ErpPermissions.Matrix.Can(Role, "User", permission);
     }
 }

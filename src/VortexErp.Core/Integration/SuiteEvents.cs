@@ -34,6 +34,10 @@ public static class SuiteEvents
 
     /// <summary>Sugerencia de compra del WMS (su fase 6a): llega como solicitud de compra por aprobar (ERP-26).</summary>
     public const string PurchaseRequested = "purchase.requested";
+
+    /// <summary>Respuesta de SUNAT a un comprobante electrónico que el hub firmó y envió (fase 7a).</summary>
+    public const string FiscalAccepted = VortexApi.Client.VortexHubEvents.FiscalAccepted;
+    public const string FiscalRejected = VortexApi.Client.VortexHubEvents.FiscalRejected;
     public const string StockAdjusted = "stock.adjusted";
     public const string ShipmentDispatched = "shipment.dispatched";
 
