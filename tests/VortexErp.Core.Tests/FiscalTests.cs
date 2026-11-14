@@ -50,7 +50,7 @@ public sealed class FiscalTests : IAsyncLifetime
         Assert.True(request.Payment!.Credit);                               // al crédito: una cuota al vencimiento
         Assert.Equal(37m, request.Payment.Installments!.Single().Amount);
 
-        // Un comprobante electrónico no se anula: se emite la nota de crédito por anulación (motivo 01).
+        // Mientras SUNAT no lo acepte no se anula; se puede corregir con la nota de crédito por anulación (motivo 01).
         await Assert.ThrowsAsync<ErpValidationException>(() => _t.Erp.Invoices.VoidAsync(id, "Error de precio"));
         await _t.Erp.Invoices.IssueCreditNoteAsync(id, NoteReasons.Void, []);
         await _t.Erp.Fiscal.SendPendingAsync(_hub);
@@ -108,6 +108,54 @@ public sealed class FiscalTests : IAsyncLifetime
         await _t.Erp.Invoices.VoidAsync(plain, "Emitida por error");   // uno que no es electrónico sí se anula
     }
 
+    private Task AcceptAsync(Guid id, string number) => _t.Erp.SyncHandlers.HandleFiscalResponseAsync(TestWorkspace.Event(SuiteEvents.FiscalAccepted,
+        new VortexFiscalResponded(id, "ERP", VortexFiscalTypes.Invoice, number[..4], long.Parse(number[5..]), VortexFiscalStatus.Accepted, "h=", null, "0", null, null),
+        source: "HUB"));
+
+    [Fact]
+    public async Task Anular_un_comprobante_aceptado_pide_la_baja_y_se_anula_cuando_SUNAT_la_acepta()
+    {
+        var (id, number) = await InvoiceAsync(_company, InvoiceKinds.Invoice);
+        await _t.Erp.Fiscal.SendPendingAsync(_hub);
+        await AcceptAsync(id, number);
+
+        await _t.Erp.Invoices.VoidAsync(id, "Precio equivocado");
+        var invoice = (await _t.Erp.Invoices.GetAsync(id))!;
+        Assert.False(invoice.IsVoided);                                                     // todavía no: espera a SUNAT
+        Assert.Equal(FiscalVoidStates.Requested, Assert.Single(await _t.Erp.Fiscal.GetForInvoiceAsync(id)).VoidState);
+        await Assert.ThrowsAsync<ErpValidationException>(() => _t.Erp.Invoices.VoidAsync(id, "Otra vez"));
+
+        await _t.Erp.Fiscal.SendPendingAsync(_hub);
+        Assert.Equal((id, "Precio equivocado"), Assert.Single(_hub.Voids));
+        Assert.Equal(FiscalVoidStates.Sent, (await _t.Erp.Fiscal.GetForInvoiceAsync(id)).Single().VoidState);
+
+        await _t.Erp.SyncHandlers.HandleFiscalVoidAsync(TestWorkspace.Event(SuiteEvents.FiscalVoided,
+            new VortexFiscalVoidResponded(id, "ERP", VortexFiscalTypes.Invoice, "FEQP", 1, true, "RA-20261102-1", "0", "Aceptada"), source: "HUB"));
+        invoice = (await _t.Erp.Invoices.GetAsync(id))!;
+        Assert.True(invoice.IsVoided);
+        Assert.Equal(FiscalStatuses.Voided, (await _t.Erp.Fiscal.GetForInvoiceAsync(id)).Single().Status);
+        var e = (await _t.OutboxAsync()).Single(x => x.EventType == SuiteEvents.InvoiceVoided);
+        Assert.Equal(DeterministicId.From("invoice_void", id), e.Id);
+    }
+
+    [Fact]
+    public async Task Pasados_7_dias_se_corrige_con_nota_y_un_rechazo_deja_el_comprobante_vigente()
+    {
+        var (id, number) = await InvoiceAsync(_company, InvoiceKinds.Invoice);
+        await _t.Erp.Fiscal.SendPendingAsync(_hub);
+        await AcceptAsync(id, number);
+        await _t.Erp.Invoices.VoidAsync(id, "Error");
+        await _t.Erp.SyncHandlers.HandleFiscalVoidAsync(TestWorkspace.Event(SuiteEvents.FiscalVoidRejected,
+            new VortexFiscalVoidResponded(id, "ERP", VortexFiscalTypes.Invoice, "FEQP", 1, false, "RA-20261102-1", "2105", "Ya informado"), source: "HUB"));
+        Assert.False((await _t.Erp.Invoices.GetAsync(id))!.IsVoided);
+        var doc = (await _t.Erp.Fiscal.GetForInvoiceAsync(id)).Single();
+        Assert.Equal((FiscalVoidStates.Rejected, FiscalStatuses.Accepted), (doc.VoidState, doc.Status));
+
+        _t.Clock.Advance(TimeSpan.FromDays(8));
+        var ex = await Assert.ThrowsAsync<ErpValidationException>(() => _t.Erp.Invoices.VoidAsync(id, "Tarde"));
+        Assert.Contains("nota de crédito", ex.Message);
+    }
+
     private sealed class FakeGateway : IFiscalGateway
     {
         public List<VortexFiscalRequest> Issued { get; } = [];
@@ -127,5 +175,14 @@ public sealed class FiscalTests : IAsyncLifetime
         }
 
         public Task<VortexFiscalDocument> RetryAsync(Guid hubId, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public List<(Guid SourceId, string Reason)> Voids { get; } = [];
+
+        public Task<VortexFiscalVoid> VoidAsync(Guid sourceId, string reason, CancellationToken ct = default)
+        {
+            Voids.Add((sourceId, reason));
+            return Task.FromResult(new VortexFiscalVoid(Guid.NewGuid(), Guid.NewGuid(), sourceId, "RA", "RA-20261102-1", new DateOnly(2026, 11, 2), reason,
+                VortexFiscalVoidStatus.Sent, "T1", null, null, null, DateTimeOffset.UtcNow));
+        }
     }
 }

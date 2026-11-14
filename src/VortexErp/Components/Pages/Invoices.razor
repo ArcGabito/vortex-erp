@@ -229,7 +229,7 @@
                 {
                     <div class="list-row" @key="fd.Id">
                         <div class="two-line" style="flex:1;min-width:0">
-                            <span class="t1">@fd.FullNumber · @T("fiscal.estado." + fd.Status)</span>
+                            <span class="t1">@fd.FullNumber · @T("fiscal.estado." + fd.Status)@(fd.VoidState is { } anulacion ? " · " + T("fiscal.void." + anulacion) : "")</span>
                             <span class="t2">@(fd.LastError ?? fd.ResponseDescription ?? fd.Notes ?? (fd.Hash is { } hashFd ? $"{T("pdf.resumen")}: {hashFd}" : ""))</span>
                         </div>
                         @if (fd.Local && fd.Status is FiscalStatuses.Failed or FiscalStatuses.Error && Session.Can(ErpPermissions.IssueInvoice))
@@ -242,7 +242,7 @@
         </ChildContent>
         <Footer>
             <button class="btn btn-ghost" style="margin-right:auto" @onclick="() => PdfAsync(d)"><Icon Name="download" Size="18" />@T("invoices.pdf")</button>
-            @if (!d.IsVoided && Session.Can(ErpPermissions.VoidInvoice) && d.CanVoid && _fiscalDocs.All(x => x.Id != d.Id))
+            @if (!d.IsVoided && Session.Can(ErpPermissions.VoidInvoice) && d.CanVoid && CanVoidElectronic(d))
             {
                 <button class="btn btn-danger" @onclick="() => StartVoid(d)"><Icon Name="ban" Size="18" />@T("invoices.anular")</button>
             }
@@ -442,7 +442,9 @@
         if (_voiding is not { } invoice)
             return;
         _busy = true;
-        _error = await TryAsync(() => Erp.Invoices.VoidAsync(invoice.Id, _reference ?? ""), T("invoices.comprobante_anulado", invoice.Number));
+        var electronic = _fiscalDocs.Any(x => x.Id == invoice.Id) || (await Erp.Fiscal.GetForInvoiceAsync(invoice.Id)).Any(x => x.Id == invoice.Id);
+        _error = await TryAsync(() => Erp.Invoices.VoidAsync(invoice.Id, _reference ?? ""),
+            electronic ? T("invoices.anulacion_pedida", invoice.Number) : T("invoices.comprobante_anulado", invoice.Number));
         _busy = false;
         if (_error is null)
             _voiding = null;
@@ -508,6 +510,11 @@
     private int _fiscalPending;
     private IReadOnlyDictionary<Guid, string> _fiscal = new Dictionary<Guid, string>();
     private IReadOnlyList<FiscalDocumentRow> _fiscalDocs = [];
+
+    /// <summary>Un comprobante electrónico se anula (por la baja de SUNAT) si ya fue aceptado y no hay una anulación en curso.</summary>
+    private bool CanVoidElectronic(InvoiceRow invoice) =>
+        _fiscalDocs.FirstOrDefault(x => x.Id == invoice.Id) is not { } doc
+        || (FiscalStatuses.IsValid(doc.Status) && doc.VoidState is not (FiscalVoidStates.Requested or FiscalVoidStates.Sent));
 
     private async Task RetryFiscalAsync(Guid id)
     {

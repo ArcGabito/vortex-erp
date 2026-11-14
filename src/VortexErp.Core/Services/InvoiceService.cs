@@ -356,7 +356,12 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
             Require(invoice is not null, T("error.el_comprobante_no_existe"));
             Require(!invoice!.IsVoided, T("error.el_comprobante_esta_anulado"));
             Require(invoice.CanVoid, T("error.tiene_cobros_o_notas_emite_nota"));
-            await FiscalService.RequireNotElectronicAsync(c, tx, invoiceId);
+            // Electrónico: se pide la baja a SUNAT por el hub; se anula al llegar la respuesta (hub.fiscal.voided).
+            if (await FiscalService.RequestVoidAsync(c, tx, now, invoiceId, reason.Trim()))
+            {
+                await AuditAsync(c, tx, now, "fiscal.void_requested", "invoice", invoiceId, invoice.Number, reason.Trim());
+                return 0;
+            }
             var e = new InvoiceVoided(invoiceId, invoice.Number, reason.Trim(), invoice.SaleId, invoice.OrderId, invoice.CustomerId);
             await MarkVoidedAsync(c, tx, now, e);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
@@ -628,6 +633,25 @@ public sealed class InvoiceService(ErpDatabase db, IErpContext context, TimeProv
         await c.ExecAsync(kind == NoteKinds.Credit
             ? "UPDATE invoices SET credited = credited + $total WHERE id = $id"
             : "UPDATE invoices SET debited = debited + $total WHERE id = $id", tx, ("$id", e.InvoiceId), ("$total", e.Total));
+    }
+
+    /// <summary>
+    /// SUNAT aceptó la baja del comprobante electrónico: queda anulado aquí y, en el equipo que la pidió, se publica
+    /// <c>invoice.voided</c> (Id determinista, así no se repite si otro equipo también lo hace).
+    /// </summary>
+    internal static async Task ApplyElectronicVoidAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset at, Guid invoiceId, bool publish)
+    {
+        var invoice = await GetAsync(c, tx, invoiceId);
+        if (invoice is null || invoice.IsVoided)
+            return;
+        var reason = await c.ScalarAsync<string?>("SELECT void_reason FROM fiscal_documents WHERE id = $id", tx, ("$id", invoiceId)) ?? T("fiscal.anulado_sunat");
+        var e = new InvoiceVoided(invoiceId, invoice.Number, reason, invoice.SaleId, invoice.OrderId, invoice.CustomerId);
+        await MarkVoidedAsync(c, tx, at, e);
+        if (publish)
+            await Outbox.EnqueueEventAsync(c, tx, at, SuiteEvents.InvoiceVoided, e, subjectType: "invoice", subjectId: invoice.Number,
+                id: DeterministicId.From("invoice_void", invoiceId));
+        await Audit.WriteAsync(c, tx, new VortexApi.Suite.Auditing.AuditEntry(Guid.NewGuid(), at, null, "SUNAT", null, AuditActions.Voided, "invoice",
+            invoiceId.ToString(), invoice.Number, reason));
     }
 
     /// <summary>Marca el comprobante como anulado y libera su pedido o venta de caja para emitir otro.</summary>
